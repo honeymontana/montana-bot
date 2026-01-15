@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS groups (
     description TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     is_main_group BOOLEAN DEFAULT FALSE,
+    is_permanent BOOLEAN DEFAULT FALSE,
+    access_duration_hours INTEGER DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

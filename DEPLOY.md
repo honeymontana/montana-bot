@@ -25,6 +25,7 @@
 - [ ] База данных создана
 - [ ] Схема инициализирована из `init-db.sql`
 - [ ] Проверены права доступа
+- [ ] Если обновление существующей БД - выполнить миграции из `migrations/`
 
 ### 4. MTProto API (опционально для /fullsync)
 - [ ] Получить API_ID и API_HASH с https://my.telegram.org/apps
@@ -120,6 +121,12 @@ docker-compose down
 
 # Получить обновления
 git pull
+
+# Применить миграции базы данных (если есть новые)
+docker-compose exec postgres psql -U montana montana_bot -f /migrations/001_add_group_access_features.sql
+
+# Или локально:
+# psql -U montana -d montana_bot -f migrations/001_add_group_access_features.sql
 
 # Перезапустить
 docker-compose up -d --build
