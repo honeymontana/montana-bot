@@ -88,10 +88,10 @@ export class MontanaBot {
       await this.handleStart(msg);
     });
 
-    // Command: /groups
-    this.bot.onText(/^\/groups/, async (msg) => {
-      await this.handleGroupsList(msg);
-    });
+    // Command: /groups - disabled, only join requests allowed
+    // this.bot.onText(/^\/groups/, async (msg) => {
+    //   await this.handleGroupsList(msg);
+    // });
 
     // Command: /status
     this.bot.onText(/^\/status/, async (msg) => {
@@ -111,11 +111,6 @@ export class MontanaBot {
     // Admin command: /addgroup [chat_id] [hours]
     this.bot.onText(/^\/addgroup(?:\s+(.+))?/, async (msg, match) => {
       await this.handleAddGroup(msg, match?.[1]);
-    });
-
-    // Admin command: /addpermanentgroup [chat_id] [hours]
-    this.bot.onText(/^\/addpermanentgroup(?:\s+(.+))?/, async (msg, match) => {
-      await this.handleAddPermanentGroup(msg, match?.[1]);
     });
 
     // Admin command: /removegroup
@@ -143,10 +138,10 @@ export class MontanaBot {
       await this.handleMemberLeft(msg);
     });
 
-    // Handle callback queries
-    this.bot.on('callback_query', async (query) => {
-      await this.handleCallbackQuery(query);
-    });
+    // Handle callback queries - disabled, only join requests allowed
+    // this.bot.on('callback_query', async (query) => {
+    //   await this.handleCallbackQuery(query);
+    // });
 
     // Error handling
     this.bot.on('polling_error', (error) => {
@@ -181,11 +176,13 @@ export class MontanaBot {
 Я помогаю управлять доступом к дополнительным чатам группы Montana.
 
 Доступные команды:
-/groups - Показать доступные группы
 /status - Проверить ваш статус
 /help - Показать эту справку
 
-Чтобы получить доступ к дополнительным чатам, вы должны быть участником основной группы Montana.
+Чтобы получить доступ к дополнительным чатам:
+1. Будьте участником основной группы Montana
+2. Подайте заявку на вступление в нужный чат
+3. Бот автоматически одобрит вашу заявку
     `;
 
     await this.bot.sendMessage(chatId, welcomeMessage.trim());
@@ -327,6 +324,7 @@ export class MontanaBot {
         description: chat.description,
         is_active: true,
         is_main_group: false,
+        is_permanent: false,
         access_duration_hours: accessDurationHours,
       });
 
@@ -639,7 +637,6 @@ export class MontanaBot {
   private async setBotCommands(): Promise<void> {
     const commands: TelegramBot.BotCommand[] = [
       { command: 'start', description: 'Начать работу с ботом' },
-      { command: 'groups', description: 'Показать доступные группы' },
       { command: 'status', description: 'Проверить ваш статус' },
       { command: 'help', description: 'Показать справку' },
     ];
@@ -649,7 +646,6 @@ export class MontanaBot {
       { command: 'sync', description: '[Admin] Синхронизировать членство' },
       { command: 'checkremoval', description: '[Admin] Проверить список на удаление' },
       { command: 'addgroup', description: '[Admin] Добавить группу' },
-      { command: 'addpermanentgroup', description: '[Admin] Добавить постоянную группу' },
       { command: 'removegroup', description: '[Admin] Удалить группу' },
       { command: 'syncgroup', description: '[Admin] Синхронизировать админов группы' },
       { command: 'fullsync', description: '[Admin] Полная синхронизация ВСЕХ участников' },

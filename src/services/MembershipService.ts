@@ -108,7 +108,6 @@ export class MembershipService {
 
   /**
    * Remove user from all managed groups if they left main group
-   * EXCEPT permanent groups (where access is lifetime)
    */
   async handleMainGroupLeave(userId: number, testMode: boolean = false): Promise<UserToRemove | null> {
     try {
@@ -119,8 +118,8 @@ export class MembershipService {
         // Get user info
         const user = await this.userRepo.findById(userId);
 
-        // Filter: exclude main group AND permanent groups
-        const groupsToRemoveFrom = userGroups.filter(g => !g.is_main_group && !g.is_permanent);
+        // Filter: exclude only main group (remove from ALL managed groups)
+        const groupsToRemoveFrom = userGroups.filter(g => !g.is_main_group);
 
         if (testMode) {
           // In test mode, just collect information
@@ -136,11 +135,10 @@ export class MembershipService {
             }))
           };
 
-          log.info('[TEST MODE] Would remove user from groups (excluding permanent)', {
+          log.info('[TEST MODE] Would remove user from groups', {
             userId,
             groupCount: groupsToRemoveFrom.length,
-            totalGroups: userGroups.length,
-            permanentGroupsCount: userGroups.filter(g => g.is_permanent).length
+            totalGroups: userGroups.length
           });
 
           return userToRemove;
@@ -167,15 +165,14 @@ export class MembershipService {
             }
           }
 
-          // Remove from non-permanent groups in database
+          // Remove from all managed groups in database
           for (const group of groupsToRemoveFrom) {
             await this.userRepo.removeFromGroup(userId, group.id);
           }
 
-          log.info('User removed from non-permanent groups', {
+          log.info('User removed from all managed groups', {
             userId,
-            removedCount: groupsToRemoveFrom.length,
-            keptInPermanent: userGroups.filter(g => g.is_permanent).length
+            removedCount: groupsToRemoveFrom.length
           });
 
           return null;
