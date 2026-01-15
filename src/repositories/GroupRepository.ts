@@ -196,4 +196,16 @@ export class GroupRepository {
 
     return now < expiresAt;
   }
+
+  async resetGroupCreatedAt(groupId: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE groups
+       SET created_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [groupId]
+    );
+
+    log.info('Group created_at reset to current time', { groupId });
+    return result.rowCount > 0;
+  }
 }

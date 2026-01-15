@@ -63,7 +63,7 @@ export class MembershipService {
         last_name: userInfo.last_name,
         is_bot: userInfo.is_bot || false,
         language_code: userInfo.language_code,
-        is_premium: userInfo.is_premium,
+        is_premium: (userInfo as any).is_premium,
       });
 
       // Get or create group in database
@@ -78,6 +78,17 @@ export class MembershipService {
           is_active: true,
           is_main_group: false,
         });
+      }
+
+      // Check if user is already a member of this group
+      const userGroups = await this.userRepo.getUserGroups(userId);
+      const alreadyMember = userGroups.some(
+        g => g.chat_id === chatId && ['member', 'administrator', 'creator'].includes(g.status || '')
+      );
+
+      if (alreadyMember) {
+        log.info('Join request denied - user already member', { userId, chatId, groupId: group.id });
+        return { approved: false, reason: 'already_member' };
       }
 
       // Check if group access window is still open
@@ -271,7 +282,7 @@ export class MembershipService {
             last_name: user.last_name,
             is_bot: user.is_bot,
             language_code: user.language_code,
-            is_premium: user.is_premium,
+            is_premium: (user as any).is_premium,
           });
 
           // Add to group
@@ -392,6 +403,29 @@ export class MembershipService {
 
       const group = await this.groupRepo.findById(groupId);
       if (!group || !group.is_active || group.is_main_group) {
+        return false;
+      }
+
+      // Check if user is already a member of this group
+      const userGroups = await this.userRepo.getUserGroups(userId);
+      const alreadyMember = userGroups.some(
+        g => g.id === groupId && ['member', 'administrator', 'creator'].includes(g.status || '')
+      );
+
+      if (alreadyMember) {
+        log.info('User already member of group, not creating new invite link', {
+          userId,
+          groupId,
+          groupTitle: group.title
+        });
+
+        // Send message that user is already a member
+        await this.bot.sendMessage(
+          userId,
+          `Вы уже являетесь участником группы "${group.title}".\n\n` +
+          `❌ Новая ссылка не создана.`
+        );
+
         return false;
       }
 

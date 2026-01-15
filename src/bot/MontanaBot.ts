@@ -128,6 +128,11 @@ export class MontanaBot {
       await this.handleFullSync(msg);
     });
 
+    // Admin command: /updategroup <chat_id> [hours|unlimited]
+    this.bot.onText(/^\/updategroup(?:\s+(.+))?/, async (msg, match) => {
+      await this.handleUpdateGroup(msg, match?.[1]);
+    });
+
     // Handle join requests
     this.bot.on('chat_join_request', async (request) => {
       await this.handleJoinRequest(request);
@@ -167,7 +172,7 @@ export class MontanaBot {
       last_name: msg.from?.last_name,
       is_bot: msg.from?.is_bot || false,
       language_code: msg.from?.language_code,
-      is_premium: msg.from?.is_premium,
+      is_premium: (msg.from as any)?.is_premium,
     });
 
     const welcomeMessage = `
@@ -442,6 +447,73 @@ export class MontanaBot {
     }
   }
 
+  private async handleUpdateGroup(msg: TelegramBot.Message, params?: string): Promise<void> {
+    const chatId = msg.chat.id;
+    const userId = msg.from?.id;
+
+    if (!userId || !this.isAdmin(userId)) {
+      await this.bot.sendMessage(chatId, 'У вас нет прав для выполнения этой команды.');
+      return;
+    }
+
+    if (!params) {
+      await this.bot.sendMessage(
+        chatId,
+        'Использование: /updategroup <chat_id> [часы|unlimited]\n\n' +
+        'Примеры:\n' +
+        '/updategroup -1001234567890 unlimited - убрать ограничение времени\n' +
+        '/updategroup -1001234567890 72 - установить окно доступа 72 часа с текущего момента'
+      );
+      return;
+    }
+
+    const parts = params.trim().split(/\s+/);
+    const targetChatId = parseInt(parts[0]);
+
+    if (isNaN(targetChatId)) {
+      await this.bot.sendMessage(chatId, '❌ Неверный формат chat_id');
+      return;
+    }
+
+    const group = await this.groupRepo.findByChatId(targetChatId);
+    if (!group) {
+      await this.bot.sendMessage(chatId, '❌ Группа не найдена в базе данных. Сначала добавьте её через /addgroup');
+      return;
+    }
+
+    let accessDurationHours: number | null = null;
+    if (parts[1]) {
+      if (parts[1].toLowerCase() === 'unlimited') {
+        accessDurationHours = null;
+      } else {
+        accessDurationHours = parseInt(parts[1]);
+        if (isNaN(accessDurationHours)) {
+          await this.bot.sendMessage(chatId, '❌ Неверный формат времени. Используйте число или "unlimited"');
+          return;
+        }
+      }
+    }
+
+    // Update group with new access duration and reset created_at to NOW
+    await this.groupRepo.update(group.id, {
+      access_duration_hours: accessDurationHours
+    });
+
+    // Also reset created_at to current timestamp to restart the access window
+    if (accessDurationHours !== null) {
+      await this.groupRepo.resetGroupCreatedAt(group.id);
+    }
+
+    let message = `✅ Группа "${group.title}" обновлена.\n\n`;
+    if (accessDurationHours === null) {
+      message += '⏰ Ограничение по времени снято. Доступ без ограничений.';
+    } else {
+      message += `⏰ Новое окно доступа: ${accessDurationHours} часов с текущего момента.`;
+    }
+
+    await this.bot.sendMessage(chatId, message);
+  }
+
   private async handleSyncGroup(msg: TelegramBot.Message): Promise<void> {
     const chatId = msg.chat.id;
     const userId = msg.from?.id;
@@ -521,6 +593,9 @@ export class MontanaBot {
         } else if (result.reason === 'access_window_closed') {
           message = 'Ваша заявка отклонена.\n\n' +
             '⏰ Окно для вступления в эту группу закрыто. Доступ к группе был ограничен по времени.';
+        } else if (result.reason === 'already_member') {
+          message = 'Ваша заявка отклонена.\n\n' +
+            '✅ Вы уже являетесь участником этой группы. Повторная заявка не требуется.';
         } else {
           message = 'Ваша заявка отклонена.\n\n' +
             'Произошла ошибка при обработке вашей заявки. Пожалуйста, попробуйте позже.';

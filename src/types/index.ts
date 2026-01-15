@@ -91,5 +91,5 @@ export interface UserToRemove {
 
 export interface JoinRequestResult {
   approved: boolean;
-  reason?: 'not_in_main_group' | 'access_window_closed' | 'error';
+  reason?: 'not_in_main_group' | 'access_window_closed' | 'already_member' | 'error';
 }
