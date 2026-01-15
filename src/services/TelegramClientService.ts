@@ -66,11 +66,12 @@ export class TelegramClientService {
             filter: new Api.ChannelParticipantsRecent(),
             offset,
             limit,
-            hash: BigInt(0),
+            hash: 0n as any,
           })
         );
 
-        if (!result || result.users.length === 0) {
+        // Check if result is ChannelParticipants (not ChannelParticipantsNotModified)
+        if (!result || !('users' in result) || result.users.length === 0) {
           break;
         }
 
