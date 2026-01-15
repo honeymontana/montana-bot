@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+npm-debug.log
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Test files
+coverage/
+*.test.ts
+*.spec.ts
+__tests__/
+jest.config.js
+.env.test
+
+# Development files
+.env
+.env.local
+.env.*.local
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Logs
+logs/
+*.log
+
+# Docker files
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Others
+Makefile
+.eslintrc.js
+.prettierrc
