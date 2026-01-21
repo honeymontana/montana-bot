@@ -88,11 +88,6 @@ export class MontanaBot {
       await this.handleStart(msg);
     });
 
-    // Command: /groups - disabled, only join requests allowed
-    // this.bot.onText(/^\/groups/, async (msg) => {
-    //   await this.handleGroupsList(msg);
-    // });
-
     // Command: /status
     this.bot.onText(/^\/status/, async (msg) => {
       await this.handleStatus(msg);
@@ -143,11 +138,6 @@ export class MontanaBot {
       await this.handleMemberLeft(msg);
     });
 
-    // Handle callback queries - disabled, only join requests allowed
-    // this.bot.on('callback_query', async (query) => {
-    //   await this.handleCallbackQuery(query);
-    // });
-
     // Error handling
     this.bot.on('polling_error', (error) => {
       log.error('Polling error', error);
@@ -178,51 +168,20 @@ export class MontanaBot {
     const welcomeMessage = `
 Добро пожаловать в Montana Helper Bot! 🤖
 
-Я помогаю управлять доступом к дополнительным чатам группы Montana.
+Я автоматически управляю доступом к чатам на основе вашей подписки в группе Montana.
 
 Доступные команды:
-/status - Проверить ваш статус
-/help - Показать эту справку
+/status - Проверить ваш статус подписки
 
-Чтобы получить доступ к дополнительным чатам:
-1. Будьте участником основной группы Montana
-2. Подайте заявку на вступление в нужный чат
-3. Бот автоматически одобрит вашу заявку
+Как это работает:
+1. Состоите в Montana - автоматически одобряется заявка на вступление в чат
+2. Выходите из Montana - автоматически удаляетесь из всех чатов
+3. Нет подписки - заявки отклоняются
     `;
 
     await this.bot.sendMessage(chatId, welcomeMessage.trim());
   }
 
-  private async handleGroupsList(msg: TelegramBot.Message): Promise<void> {
-    const chatId = msg.chat.id;
-    const userId = msg.from?.id;
-
-    if (!userId) return;
-
-    const groups = await this.membershipService.getAvailableGroups(userId);
-
-    if (groups.length === 0) {
-      await this.bot.sendMessage(
-        chatId,
-        'У вас нет доступа к дополнительным группам. Убедитесь, что вы являетесь участником основной группы Montana.'
-      );
-      return;
-    }
-
-    // Create inline keyboard with groups
-    const keyboard = {
-      inline_keyboard: groups.map(group => [{
-        text: group.title,
-        callback_data: `join_${group.id}`
-      }])
-    };
-
-    await this.bot.sendMessage(
-      chatId,
-      'Доступные группы:\nНажмите на группу, чтобы получить приглашение:',
-      { reply_markup: keyboard }
-    );
-  }
 
   private async handleStatus(msg: TelegramBot.Message): Promise<void> {
     const chatId = msg.chat.id;
@@ -634,29 +593,6 @@ export class MontanaBot {
     }
   }
 
-  private async handleCallbackQuery(query: TelegramBot.CallbackQuery): Promise<void> {
-    const userId = query.from.id;
-    const data = query.data;
-
-    if (!data) return;
-
-    if (data.startsWith('join_')) {
-      const groupId = data.replace('join_', '');
-      const success = await this.membershipService.addToManagedGroup(userId, groupId);
-
-      if (success) {
-        await this.bot.answerCallbackQuery(query.id, {
-          text: 'Приглашение отправлено в личные сообщения!',
-          show_alert: false,
-        });
-      } else {
-        await this.bot.answerCallbackQuery(query.id, {
-          text: 'Не удалось добавить в группу. Проверьте ваш статус в основной группе.',
-          show_alert: true,
-        });
-      }
-    }
-  }
 
   private async handleCheckRemoval(msg: TelegramBot.Message): Promise<void> {
     const chatId = msg.chat.id;
@@ -712,8 +648,7 @@ export class MontanaBot {
   private async setBotCommands(): Promise<void> {
     const commands: TelegramBot.BotCommand[] = [
       { command: 'start', description: 'Начать работу с ботом' },
-      { command: 'status', description: 'Проверить ваш статус' },
-      { command: 'help', description: 'Показать справку' },
+      { command: 'status', description: 'Проверить ваш статус подписки' },
     ];
 
     const adminCommands: TelegramBot.BotCommand[] = [

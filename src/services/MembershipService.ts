@@ -181,6 +181,22 @@ export class MembershipService {
             await this.userRepo.removeFromGroup(userId, group.id);
           }
 
+          // Send notification to user that they were removed
+          if (groupsToRemoveFrom.length > 0) {
+            try {
+              const groupList = groupsToRemoveFrom.map(g => `• ${g.title}`).join('\n');
+              await this.bot.sendMessage(
+                userId,
+                `❌ Ваша подписка в Montana закончилась.\n\n` +
+                `Вы были удалены из следующих чатов:\n${groupList}\n\n` +
+                `Чтобы вернуть доступ, вступите обратно в основную группу Montana.`
+              );
+            } catch (error) {
+              // User might have blocked the bot or privacy settings prevent messaging
+              log.debug('Could not send removal notification to user', { userId });
+            }
+          }
+
           log.info('User removed from all managed groups', {
             userId,
             removedCount: groupsToRemoveFrom.length
@@ -366,92 +382,4 @@ export class MembershipService {
     return { synced, errors };
   }
 
-  /**
-   * Get available groups for user
-   */
-  async getAvailableGroups(userId: number): Promise<Group[]> {
-    const { isInMainGroup } = await this.checkMainGroupMembership(userId);
-
-    if (!isInMainGroup) {
-      return [];
-    }
-
-    const allGroups = await this.groupRepo.findAllManaged();
-
-    // Filter groups by access window
-    const availableGroups: Group[] = [];
-    for (const group of allGroups) {
-      const isAccessible = await this.groupRepo.isGroupAccessible(group.id);
-      if (isAccessible) {
-        availableGroups.push(group);
-      }
-    }
-
-    return availableGroups;
-  }
-
-  /**
-   * Add user to a specific managed group
-   */
-  async addToManagedGroup(userId: number, groupId: string): Promise<boolean> {
-    try {
-      // Check main group membership first
-      const { isInMainGroup } = await this.checkMainGroupMembership(userId);
-      if (!isInMainGroup) {
-        return false;
-      }
-
-      const group = await this.groupRepo.findById(groupId);
-      if (!group || !group.is_active || group.is_main_group) {
-        return false;
-      }
-
-      // Check if user is already a member of this group
-      const userGroups = await this.userRepo.getUserGroups(userId);
-      const alreadyMember = userGroups.some(
-        g => g.id === groupId && ['member', 'administrator', 'creator'].includes(g.status || '')
-      );
-
-      if (alreadyMember) {
-        log.info('User already member of group, not creating new invite link', {
-          userId,
-          groupId,
-          groupTitle: group.title
-        });
-
-        // Send message that user is already a member
-        await this.bot.sendMessage(
-          userId,
-          `Вы уже являетесь участником группы "${group.title}".\n\n` +
-          `❌ Новая ссылка не создана.`
-        );
-
-        return false;
-      }
-
-      // Add to database
-      await this.userRepo.addToGroup(userId, groupId, 'member');
-
-      // Generate invite link (expires in 24 hours)
-      const inviteLink = await this.bot.createChatInviteLink(group.chat_id, {
-        member_limit: 1,
-        creates_join_request: false,
-        expire_date: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 hours
-      });
-
-      // Send invite link to user
-      await this.bot.sendMessage(
-        userId,
-        `Вы добавлены в группу "${group.title}".\n\n` +
-        `Вступить: ${inviteLink.invite_link}\n\n` +
-        `⏰ Ссылка действует 24 часа`
-      );
-
-      log.info('User added to managed group', { userId, groupId });
-      return true;
-    } catch (error) {
-      log.error('Failed to add user to managed group', { userId, groupId, error });
-      return false;
-    }
-  }
 }
