@@ -93,3 +93,29 @@ export interface JoinRequestResult {
   approved: boolean;
   reason?: 'not_in_main_group' | 'access_window_closed' | 'already_member' | 'error';
 }
+
+export interface DiscordLink {
+  id: string;
+  telegram_id: number;
+  discord_id: string;
+  discord_username?: string;
+  discord_discriminator?: string;
+  discord_avatar?: string;
+  guild_id: string;
+  linked_at?: Date;
+  updated_at?: Date;
+}
+
+export interface DiscordOAuthState {
+  state: string;
+  telegram_id: number;
+  created_at: Date;
+  expires_at: Date;
+}
+
+export interface DiscordRoleSyncResult {
+  success: boolean;
+  added: number;
+  removed: number;
+  errors: number;
+}

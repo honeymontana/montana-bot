@@ -4,6 +4,9 @@ import { log } from '../utils/logger';
 import { MembershipService } from '../services/MembershipService';
 import { GroupRepository } from '../repositories/GroupRepository';
 import { UserRepository } from '../repositories/UserRepository';
+import { DiscordRepository } from '../repositories/DiscordRepository';
+import { DiscordService } from '../services/DiscordService';
+import { DiscordOAuthServer } from '../services/DiscordOAuthServer';
 import { testConnection } from '../database/connection';
 import { UserToRemove } from '../types';
 
@@ -12,7 +15,11 @@ export class MontanaBot {
   private membershipService: MembershipService;
   private groupRepo: GroupRepository;
   private userRepo: UserRepository;
+  private discordRepo: DiscordRepository;
+  private discordService: DiscordService | null = null;
+  private discordOAuthServer: DiscordOAuthServer | null = null;
   private syncInterval: NodeJS.Timeout | null = null;
+  private discordSyncInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     this.bot = new TelegramBot(config.bot.token, {
@@ -22,6 +29,7 @@ export class MontanaBot {
     this.membershipService = new MembershipService(this.bot);
     this.groupRepo = new GroupRepository();
     this.userRepo = new UserRepository();
+    this.discordRepo = new DiscordRepository();
   }
 
   async start(): Promise<void> {
@@ -34,6 +42,9 @@ export class MontanaBot {
     // Initialize main group
     await this.initializeMainGroup();
 
+    // Initialize Discord integration if enabled
+    await this.initializeDiscord();
+
     // Register event handlers
     this.registerHandlers();
 
@@ -44,6 +55,35 @@ export class MontanaBot {
     await this.setBotCommands();
 
     log.info('Montana Helper Bot started successfully');
+  }
+
+  private async initializeDiscord(): Promise<void> {
+    if (!config.discord.enabled) {
+      log.info('Discord integration is disabled');
+      return;
+    }
+
+    try {
+      // Initialize Discord service
+      this.discordService = new DiscordService();
+      const connected = await this.discordService.connect();
+
+      if (!connected) {
+        log.error('Failed to connect Discord service');
+        return;
+      }
+
+      // Initialize OAuth server
+      this.discordOAuthServer = new DiscordOAuthServer(this.bot, this.discordService);
+      this.discordOAuthServer.start();
+
+      // Start periodic Discord role sync
+      this.startDiscordRoleSync();
+
+      log.info('Discord integration initialized successfully');
+    } catch (error) {
+      log.error('Failed to initialize Discord integration', error);
+    }
   }
 
   private async initializeMainGroup(): Promise<void> {
@@ -126,6 +166,21 @@ export class MontanaBot {
     // Admin command: /updategroup <chat_id> [hours|unlimited]
     this.bot.onText(/^\/updategroup(?:\s+(.+))?/, async (msg, match) => {
       await this.handleUpdateGroup(msg, match?.[1]);
+    });
+
+    // Discord command: /linkdiscord
+    this.bot.onText(/^\/linkdiscord/, async (msg) => {
+      await this.handleLinkDiscord(msg);
+    });
+
+    // Discord command: /unlinkdiscord
+    this.bot.onText(/^\/unlinkdiscord/, async (msg) => {
+      await this.handleUnlinkDiscord(msg);
+    });
+
+    // Discord command: /discordstatus
+    this.bot.onText(/^\/discordstatus/, async (msg) => {
+      await this.handleDiscordStatus(msg);
     });
 
     // Handle join requests
@@ -651,6 +706,15 @@ export class MontanaBot {
       { command: 'status', description: 'Проверить ваш статус подписки' },
     ];
 
+    // Add Discord commands if enabled
+    if (config.discord.enabled) {
+      commands.push(
+        { command: 'linkdiscord', description: 'Привязать Discord аккаунт' },
+        { command: 'unlinkdiscord', description: 'Отвязать Discord аккаунт' },
+        { command: 'discordstatus', description: 'Проверить Discord статус' }
+      );
+    }
+
     const adminCommands: TelegramBot.BotCommand[] = [
       ...commands,
       { command: 'sync', description: '[Admin] Синхронизировать членство' },
@@ -729,10 +793,167 @@ export class MontanaBot {
     return true;
   }
 
+  private async handleLinkDiscord(msg: TelegramBot.Message): Promise<void> {
+    const chatId = msg.chat.id;
+    const userId = msg.from?.id;
+
+    if (!userId) return;
+
+    if (!config.discord.enabled) {
+      await this.bot.sendMessage(chatId, '❌ Discord интеграция отключена.');
+      return;
+    }
+
+    if (!this.discordOAuthServer) {
+      await this.bot.sendMessage(chatId, '❌ Discord OAuth сервер не запущен.');
+      return;
+    }
+
+    // Check if already linked
+    const existingLink = await this.discordRepo.findByTelegramId(userId);
+    if (existingLink) {
+      await this.bot.sendMessage(
+        chatId,
+        `⚠️ Ваш Telegram уже привязан к Discord аккаунту: ${existingLink.discord_username}\n\n` +
+        `Если вы хотите привязать другой Discord аккаунт, сначала используйте /unlinkdiscord`
+      );
+      return;
+    }
+
+    const authUrl = this.discordOAuthServer.generateAuthUrl(userId);
+
+    await this.bot.sendMessage(
+      chatId,
+      `🔗 Привязка Discord аккаунта\n\n` +
+      `Нажмите на ссылку ниже, чтобы авторизоваться через Discord и привязать ваш аккаунт:\n\n` +
+      `${authUrl}\n\n` +
+      `После успешной авторизации вы получите подтверждение.`
+    );
+  }
+
+  private async handleUnlinkDiscord(msg: TelegramBot.Message): Promise<void> {
+    const chatId = msg.chat.id;
+    const userId = msg.from?.id;
+
+    if (!userId) return;
+
+    if (!config.discord.enabled) {
+      await this.bot.sendMessage(chatId, '❌ Discord интеграция отключена.');
+      return;
+    }
+
+    const existingLink = await this.discordRepo.findByTelegramId(userId);
+    if (!existingLink) {
+      await this.bot.sendMessage(chatId, '❌ Ваш Telegram не привязан к Discord аккаунту.');
+      return;
+    }
+
+    // Remove role from Discord if service is ready
+    if (this.discordService && this.discordService.isReady()) {
+      const roleId = config.discord.memberRoleId;
+      if (roleId) {
+        await this.discordService.removeRole(existingLink.discord_id, roleId);
+      }
+    }
+
+    // Delete link from database
+    await this.discordRepo.deleteByTelegramId(userId);
+
+    await this.bot.sendMessage(
+      chatId,
+      `✅ Discord аккаунт ${existingLink.discord_username} успешно отвязан.\n\n` +
+      `Вы можете привязать другой аккаунт с помощью команды /linkdiscord`
+    );
+
+    log.info('Discord account unlinked', {
+      telegramId: userId,
+      discordId: existingLink.discord_id,
+      discordUsername: existingLink.discord_username
+    });
+  }
+
+  private async handleDiscordStatus(msg: TelegramBot.Message): Promise<void> {
+    const chatId = msg.chat.id;
+    const userId = msg.from?.id;
+
+    if (!userId) return;
+
+    if (!config.discord.enabled) {
+      await this.bot.sendMessage(chatId, '❌ Discord интеграция отключена.');
+      return;
+    }
+
+    const link = await this.discordRepo.findByTelegramId(userId);
+
+    if (!link) {
+      await this.bot.sendMessage(
+        chatId,
+        `📊 Discord статус:\n\n` +
+        `❌ Аккаунт не привязан\n\n` +
+        `Используйте /linkdiscord для привязки вашего Discord аккаунта.`
+      );
+      return;
+    }
+
+    const { isInMainGroup } = await this.membershipService.checkMainGroupMembership(userId);
+
+    let statusMessage = `📊 Discord статус:\n\n`;
+    statusMessage += `✅ Привязанный Discord: ${link.discord_username}\n`;
+    statusMessage += `🏷️ Discord ID: ${link.discord_id}\n`;
+    statusMessage += `🎭 Montana членство: ${isInMainGroup ? '✅ Активно' : '❌ Не активно'}\n\n`;
+
+    if (isInMainGroup) {
+      statusMessage += `✨ У вас есть доступ к Montana Discord серверу!`;
+    } else {
+      statusMessage += `⚠️ Для доступа к Montana Discord серверу вступите в основную Telegram группу.`;
+    }
+
+    await this.bot.sendMessage(chatId, statusMessage);
+  }
+
+  private startDiscordRoleSync(): void {
+    if (!this.discordService) {
+      return;
+    }
+
+    const intervalMs = config.telegram.checkIntervalMinutes * 60 * 1000;
+
+    this.discordSyncInterval = setInterval(async () => {
+      try {
+        if (this.discordService) {
+          const result = await this.discordService.syncRoles();
+
+          if (result.success) {
+            log.info('Discord role sync completed', {
+              added: result.added,
+              removed: result.removed,
+              errors: result.errors,
+            });
+          } else {
+            log.error('Discord role sync failed');
+          }
+        }
+      } catch (error) {
+        log.error('Discord role sync error', error);
+      }
+    }, intervalMs);
+
+    log.info(`Discord role sync started (every ${config.telegram.checkIntervalMinutes} minutes)`);
+  }
+
   async stop(): Promise<void> {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
+    }
+
+    if (this.discordSyncInterval) {
+      clearInterval(this.discordSyncInterval);
+      this.discordSyncInterval = null;
+    }
+
+    if (this.discordService) {
+      await this.discordService.disconnect();
     }
 
     await this.bot.stopPolling();
