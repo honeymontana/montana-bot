@@ -32,6 +32,13 @@ export class GroupRepository {
     return result.rows;
   }
 
+  async findAll(): Promise<Group[]> {
+    const result = await query(
+      'SELECT * FROM groups ORDER BY is_main_group DESC, is_permanent DESC, title'
+    );
+    return result.rows;
+  }
+
   async create(group: Partial<Group>): Promise<Group> {
     const result = await query(
       `INSERT INTO groups (chat_id, title, username, description, is_active, is_main_group, is_permanent, access_duration_hours)

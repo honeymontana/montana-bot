@@ -104,6 +104,18 @@ export interface DiscordLink {
   guild_id: string;
   linked_at?: Date;
   updated_at?: Date;
+  last_discord_change?: Date;
+}
+
+export interface DiscordPendingInvite {
+  id: string;
+  telegram_id: number;
+  invite_code: string;
+  invite_url: string;
+  created_at: Date;
+  expires_at: Date;
+  used: boolean;
+  used_at?: Date;
 }
 
 export interface DiscordOAuthState {

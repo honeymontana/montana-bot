@@ -46,6 +46,11 @@ if (error) {
   throw new Error(`Config validation error: ${error.message}`);
 }
 
+// Debug: Log only in development (never log tokens in production)
+if (envVars.NODE_ENV === 'development') {
+  console.log('🔑 Bot token loaded (length:', (envVars.BOT_TOKEN as string).length, 'chars)');
+}
+
 export const config = {
   env: envVars.NODE_ENV as string,
   bot: {

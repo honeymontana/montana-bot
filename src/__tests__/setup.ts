@@ -24,3 +24,9 @@ jest.mock('../utils/logger', () => ({
     silly: jest.fn(),
   },
 }));
+
+describe('Test Setup', () => {
+  it('should load test environment', () => {
+    expect(process.env.NODE_ENV).toBeDefined();
+  });
+});

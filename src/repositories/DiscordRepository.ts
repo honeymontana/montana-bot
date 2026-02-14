@@ -45,15 +45,16 @@ export class DiscordRepository {
     const result = await query(
       `INSERT INTO discord_links (
         telegram_id, discord_id, discord_username,
-        discord_discriminator, discord_avatar, guild_id
+        discord_discriminator, discord_avatar, guild_id, last_discord_change
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       ON CONFLICT (telegram_id) DO UPDATE
       SET discord_id = EXCLUDED.discord_id,
           discord_username = EXCLUDED.discord_username,
           discord_discriminator = EXCLUDED.discord_discriminator,
           discord_avatar = EXCLUDED.discord_avatar,
           guild_id = EXCLUDED.guild_id,
+          last_discord_change = EXCLUDED.last_discord_change,
           updated_at = CURRENT_TIMESTAMP
       RETURNING *`,
       [
@@ -62,7 +63,8 @@ export class DiscordRepository {
         link.discord_username,
         link.discord_discriminator,
         link.discord_avatar,
-        link.guild_id
+        link.guild_id || process.env.DISCORD_GUILD_ID || '',
+        link.last_discord_change || null
       ]
     );
 
