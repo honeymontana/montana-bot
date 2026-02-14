@@ -30,7 +30,14 @@ export async function testConnection(): Promise<boolean> {
     });
     return true;
   } catch (error) {
-    log.error('Failed to connect to database', error);
+    // Security: Don't log full error object (may contain connection string with password)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    log.error('Failed to connect to database', {
+      error: errorMessage,
+      host: config.database.host,
+      database: config.database.database,
+      user: config.database.user,
+    });
     return false;
   } finally {
     if (client) {
@@ -48,7 +55,9 @@ export async function query(text: string, params?: any[]): Promise<any> {
     log.debug('Executed query', { text, duration, rows: result.rowCount });
     return result;
   } catch (error) {
-    log.error('Database query error', { text, error });
+    // Security: Don't log full error object or params (may contain sensitive data)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    log.error('Database query error', { text, error: errorMessage });
     throw error;
   }
 }

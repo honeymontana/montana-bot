@@ -4,6 +4,8 @@
 
 import express, { Request, Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
+import helmet from 'helmet';
+import cors from 'cors';
 import { query as dbQuery } from '../database/connection';
 import { tributeService } from '../services/TributeService';
 import { performHealthCheck, checkReadiness, checkLiveness } from '../utils/healthCheck';
@@ -53,16 +55,34 @@ const strictLimiter = rateLimit({
 });
 
 /**
- * Middleware для проверки авторизации (простая реализация)
+ * Middleware для проверки авторизации
+ * Security: Only accepts API key via header (not query params)
+ * Security: No fallback - DASHBOARD_API_KEY must be set in environment
  */
 const authenticate = (req: Request, res: Response, next: Function) => {
-  const apiKey = req.headers['x-api-key'] || req.query.api_key;
-  const validApiKey = process.env.DASHBOARD_API_KEY || 'montana-secret-key-2026';
+  const apiKey = req.headers['x-api-key'] as string | undefined;
+  const validApiKey = process.env.DASHBOARD_API_KEY;
 
-  if (apiKey === validApiKey) {
-    next();
+  if (!validApiKey) {
+    log.error('DASHBOARD_API_KEY environment variable is not set');
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  // Optional: IP whitelisting for production
+  const allowedIPs = process.env.API_ALLOWED_IPS?.split(',') || [];
+  if (process.env.NODE_ENV === 'production' && allowedIPs.length > 0) {
+    const clientIP = req.ip || req.socket.remoteAddress || '';
+    if (!allowedIPs.includes(clientIP)) {
+      log.warn(`Unauthorized IP attempt: ${clientIP}`);
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+  }
+
+  if (apiKey && apiKey === validApiKey) {
+    return next();
   } else {
-    res.status(401).json({ error: 'Unauthorized' });
+    log.warn(`Failed authentication attempt from ${req.ip}`);
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 };
 
@@ -483,20 +503,47 @@ export const dashboardAPI = router;
 export function startDashboardServer(port: number = 3000) {
   const app = express();
 
-  // Middleware
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  // Security: Helmet.js for security headers
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+        },
+      },
+    })
+  );
 
-  // CORS для разработки
-  app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header(
-      'Access-Control-Allow-Headers',
-      'Origin, X-Requested-With, Content-Type, Accept, X-API-Key'
-    );
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    next();
-  });
+  // Security: Proper CORS configuration
+  const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(',') || [
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ];
+
+  app.use(
+    cors({
+      origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+        // Allow requests with no origin (like mobile apps or curl)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'X-API-Key'],
+    })
+  );
+
+  // Middleware
+  app.use(express.json({ limit: '10mb' })); // Limit request body size
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // Apply rate limiting to all API routes
   app.use('/api', limiter);
@@ -519,7 +566,8 @@ export function startDashboardServer(port: number = 3000) {
   app.listen(port, () => {
     log.info(`\n🚀 Dashboard server running on http://localhost:${port}`);
     log.info(`📊 API endpoints: http://localhost:${port}/api`);
-    log.info(`🔑 API Key: ${process.env.DASHBOARD_API_KEY || 'montana-secret-key-2026'}`);
+    const apiKeySet = process.env.DASHBOARD_API_KEY ? '✓ SET' : '✗ NOT SET';
+    log.info(`🔑 API Key: ${apiKeySet}`);
     log.info(`✅ Health checks: /api/health, /api/ready, /api/live`);
     log.info(`🛡️  Rate limiting: 100 requests per 15 minutes\n`);
   });
