@@ -54,10 +54,6 @@ npm run pm2:stop:${ENV} 2>/dev/null || echo "No running instance found"
 echo -e "${BLUE}📦 Installing dependencies...${NC}"
 npm install
 
-# Run database migrations
-echo -e "${BLUE}🗄️  Running database migrations...${NC}"
-npm run migration:run
-
 # Build the project
 echo -e "${BLUE}🔨 Building project...${NC}"
 npm run build

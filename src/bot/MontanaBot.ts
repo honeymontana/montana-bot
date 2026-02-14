@@ -1413,7 +1413,6 @@ export class MontanaBot {
         first_name: msg.from?.first_name,
         last_name: msg.from?.last_name,
         language_code: msg.from?.language_code,
-        is_premium: msg.from?.is_premium,
       });
 
       // Create one-time invite link
