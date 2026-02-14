@@ -3,7 +3,6 @@ module.exports = {
     {
       name: 'montana-bot-dev',
       script: './dist/index.js',
-      cwd: '/Users/nick/montana-tg-bot',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
@@ -25,7 +24,6 @@ module.exports = {
     {
       name: 'montana-bot-staging',
       script: './dist/index.js',
-      cwd: '/Users/nick/montana-tg-bot',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
@@ -47,7 +45,6 @@ module.exports = {
     {
       name: 'montana-bot-prod',
       script: './dist/index.js',
-      cwd: '/Users/nick/montana-tg-bot',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
