@@ -81,6 +81,39 @@ export class DiscordPendingInviteRepository {
   }
 
   /**
+   * Get recent unused pending invites for a guild
+   */
+  async getRecentUnused(guildId: string, minutes: number): Promise<DiscordPendingInvite[]> {
+    const result = await query(
+      `SELECT dpi.*
+       FROM discord_pending_invites dpi
+       JOIN discord_links dl ON dpi.telegram_id = dl.telegram_id
+       WHERE dl.guild_id = $1
+       AND dpi.used = FALSE
+       AND dpi.expires_at > NOW()
+       AND dpi.created_at > NOW() - INTERVAL '${minutes} minutes'
+       ORDER BY dpi.created_at DESC`,
+      [guildId]
+    );
+
+    // If no results with guild_id match, try without guild filter
+    // (for pending invites created before linking)
+    if (result.rows.length === 0) {
+      const fallbackResult = await query(
+        `SELECT *
+         FROM discord_pending_invites
+         WHERE used = FALSE
+         AND expires_at > NOW()
+         AND created_at > NOW() - INTERVAL '${minutes} minutes'
+         ORDER BY created_at DESC`
+      );
+      return fallbackResult.rows;
+    }
+
+    return result.rows;
+  }
+
+  /**
    * Cleanup expired invites (cron job)
    */
   async cleanupExpired(): Promise<number> {
