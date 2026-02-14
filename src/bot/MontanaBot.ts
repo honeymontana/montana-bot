@@ -1387,18 +1387,33 @@ export class MontanaBot {
       const activePendingInvite = await this.discordService.getActivePendingInvite(userId);
 
       if (activePendingInvite) {
-        const expiresAt = new Date(activePendingInvite.expires_at);
-        const hoursLeft = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
-
-        await this.bot.sendMessage(
-          chatId,
-          `⚠️ У вас уже есть активная invite ссылка!\n\n` +
-            `🔗 ${activePendingInvite.invite_url}\n\n` +
-            `⏰ Истекает через: ${hoursLeft} ч.\n` +
-            `🎯 Максимум использований: 1\n\n` +
-            `После присоединения ваш аккаунт будет автоматически привязан.`
+        // Verify invite still exists on Discord side
+        const inviteStillValid = await this.discordService.checkInviteExists(
+          activePendingInvite.invite_code
         );
-        return;
+
+        if (inviteStillValid) {
+          const expiresAt = new Date(activePendingInvite.expires_at);
+          const hoursLeft = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
+
+          await this.bot.sendMessage(
+            chatId,
+            `⚠️ У вас уже есть активная invite ссылка!\n\n` +
+              `🔗 ${activePendingInvite.invite_url}\n\n` +
+              `⏰ Истекает через: ${hoursLeft} ч.\n` +
+              `🎯 Максимум использований: 1\n\n` +
+              `После присоединения ваш аккаунт будет автоматически привязан.`
+          );
+          return;
+        } else {
+          // Invite was deleted on Discord side (likely used) - clean up database
+          log.info('Cleaning up deleted Discord invite from database', {
+            telegramId: userId,
+            inviteCode: activePendingInvite.invite_code,
+          });
+          await this.discordService.cleanupInvalidInvite(activePendingInvite.invite_code);
+          // Continue to create new invite
+        }
       }
 
       // Deactivate old link if re-linking

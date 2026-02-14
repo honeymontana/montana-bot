@@ -730,6 +730,40 @@ export class DiscordService {
   }
 
   /**
+   * Check if invite still exists on Discord side
+   */
+  async checkInviteExists(inviteCode: string): Promise<boolean> {
+    try {
+      const guildId = config.discord.guildId;
+      const guild = await this.getGuild(guildId);
+
+      if (!guild) {
+        return false;
+      }
+
+      const invites = await guild.invites.fetch();
+      const invite = invites.get(inviteCode);
+
+      return !!invite;
+    } catch (error) {
+      log.error('Failed to check invite existence', { inviteCode, error });
+      return false;
+    }
+  }
+
+  /**
+   * Cleanup invalid invite from database
+   */
+  async cleanupInvalidInvite(inviteCode: string): Promise<void> {
+    try {
+      await this.pendingInviteRepo.markAsUsed(inviteCode);
+      log.info('Marked invalid invite as used', { inviteCode });
+    } catch (error) {
+      log.error('Failed to cleanup invalid invite', { inviteCode, error });
+    }
+  }
+
+  /**
    * Check if bot is connected
    */
   isReady(): boolean {
