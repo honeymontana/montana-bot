@@ -85,12 +85,13 @@ export class UserRepository {
     return result.rows;
   }
 
-  async isUserInGroup(userId: number, groupId: string): Promise<boolean> {
+  async isUserInGroup(userId: number, groupChatId: string): Promise<boolean> {
     const result = await query(
-      `SELECT 1 FROM user_groups
-       WHERE user_id = $1 AND group_id = $2
-       AND status IN ('member', 'admin', 'creator')`,
-      [userId, groupId]
+      `SELECT 1 FROM user_groups ug
+       JOIN groups g ON ug.group_id = g.id
+       WHERE ug.user_id = $1 AND g.chat_id = $2
+       AND ug.status IN ('member', 'admin', 'creator')`,
+      [userId, parseInt(groupChatId)]
     );
     return result.rowCount > 0;
   }
