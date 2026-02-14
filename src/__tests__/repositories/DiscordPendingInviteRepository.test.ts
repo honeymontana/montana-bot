@@ -112,18 +112,15 @@ describe('DiscordPendingInviteRepository', () => {
       const result = await repository.findActiveByTelegramId(telegramId);
 
       expect(result).toEqual(mockInvite);
-      expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE telegram_id = $1'),
-        [telegramId]
-      );
-      expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('AND used = FALSE'),
-        [telegramId]
-      );
-      expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('AND expires_at > NOW()'),
-        [telegramId]
-      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('WHERE telegram_id = $1'), [
+        telegramId,
+      ]);
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('AND used = FALSE'), [
+        telegramId,
+      ]);
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('AND expires_at > NOW()'), [
+        telegramId,
+      ]);
     });
 
     it('should return null if no active invite found', async () => {
@@ -187,10 +184,9 @@ describe('DiscordPendingInviteRepository', () => {
         expect.stringContaining('DELETE FROM discord_pending_invites'),
         [telegramId]
       );
-      expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE telegram_id = $1'),
-        [telegramId]
-      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('WHERE telegram_id = $1'), [
+        telegramId,
+      ]);
       expect(mockQuery).toHaveBeenCalledWith(
         expect.stringContaining('AND (used = TRUE OR expires_at < NOW())'),
         [telegramId]

@@ -3,11 +3,12 @@
  */
 
 import { query as dbQuery } from '../database/connection';
+import { log } from '../utils/logger';
 
 // Wrapper для совместимости
 const db = {
   query: dbQuery,
-  end: async () => {}
+  end: async () => {},
 };
 
 export interface TributeSubscriptionEvent {
@@ -45,7 +46,7 @@ class TributeService {
    * Обработать webhook событие от Tribute
    */
   async handleWebhookEvent(event: TributeSubscriptionEvent): Promise<void> {
-    console.log(`[Tribute] Получено событие: ${event.type} от ${event.username || event.user_id}`);
+    log.info(`[Tribute] Получено событие: ${event.type} от ${event.username || event.user_id}`);
 
     await this.saveSubscriptionEvent(event);
     await this.updateMetrics();
@@ -71,17 +72,17 @@ class TributeService {
       event.username,
       event.amount,
       event.type,
-      event.timestamp
+      event.timestamp,
     ]);
 
-    console.log(`[Tribute] Событие сохранено в БД`);
+    log.info(`[Tribute] Событие сохранено в БД`);
   }
 
   /**
    * Импортировать исторические данные из JSON экспорта
    */
   async importFromTelegramExport(filePath: string): Promise<void> {
-    console.log(`[Tribute] Импорт данных из ${filePath}...`);
+    log.info(`[Tribute] Импорт данных из ${filePath}...`);
 
     const fs = require('fs');
     const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -115,7 +116,7 @@ class TributeService {
           amount,
           currency: 'EUR',
           channel_id: 'montana',
-          timestamp: new Date(date)
+          timestamp: new Date(date),
         });
         imported++;
       } catch (error) {
@@ -123,7 +124,7 @@ class TributeService {
       }
     }
 
-    console.log(`[Tribute] Импортировано ${imported} событий`);
+    log.info(`[Tribute] Импортировано ${imported} событий`);
     await this.updateMetrics();
   }
 
@@ -245,11 +246,11 @@ class TributeService {
         (metric as any).new_users + metric.active_users,
         metric.active_users,
         metric.churned_users,
-        metric.churn_rate
+        metric.churn_rate,
       ]);
     }
 
-    console.log(`[Tribute] Метрики обновлены для ${metrics.length} периодов`);
+    log.info(`[Tribute] Метрики обновлены для ${metrics.length} периодов`);
   }
 
   /**
@@ -259,9 +260,7 @@ class TributeService {
     const text = message.text;
     if (typeof text === 'string') return text;
     if (Array.isArray(text)) {
-      return text.map(item =>
-        typeof item === 'string' ? item : item.text || ''
-      ).join('');
+      return text.map((item) => (typeof item === 'string' ? item : item.text || '')).join('');
     }
     return '';
   }

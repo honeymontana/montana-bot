@@ -83,11 +83,16 @@ export class MembershipService {
       // Check if user is already a member of this group
       const userGroups = await this.userRepo.getUserGroups(userId);
       const alreadyMember = userGroups.some(
-        g => g.chat_id === chatId && ['member', 'administrator', 'creator'].includes(g.status || '')
+        (g) =>
+          g.chat_id === chatId && ['member', 'administrator', 'creator'].includes(g.status || '')
       );
 
       if (alreadyMember) {
-        log.info('Join request denied - user already member', { userId, chatId, groupId: group.id });
+        log.info('Join request denied - user already member', {
+          userId,
+          chatId,
+          groupId: group.id,
+        });
         return { approved: false, reason: 'already_member' };
       }
 
@@ -98,7 +103,7 @@ export class MembershipService {
           userId,
           chatId,
           groupId: group.id,
-          accessDurationHours: group.access_duration_hours
+          accessDurationHours: group.access_duration_hours,
         });
         return { approved: false, reason: 'access_window_closed' };
       }
@@ -120,7 +125,10 @@ export class MembershipService {
   /**
    * Remove user from all managed groups if they left main group
    */
-  async handleMainGroupLeave(userId: number, testMode: boolean = false): Promise<UserToRemove | null> {
+  async handleMainGroupLeave(
+    userId: number,
+    testMode: boolean = false
+  ): Promise<UserToRemove | null> {
     try {
       return await withTransaction(async (client) => {
         // Get all groups user is member of
@@ -130,7 +138,7 @@ export class MembershipService {
         const user = await this.userRepo.findById(userId);
 
         // Filter: exclude only main group (remove from ALL managed groups)
-        const groupsToRemoveFrom = userGroups.filter(g => !g.is_main_group);
+        const groupsToRemoveFrom = userGroups.filter((g) => !g.is_main_group);
 
         if (testMode) {
           // In test mode, just collect information
@@ -139,17 +147,17 @@ export class MembershipService {
             username: user?.username,
             firstName: user?.first_name,
             lastName: user?.last_name,
-            groups: groupsToRemoveFrom.map(g => ({
+            groups: groupsToRemoveFrom.map((g) => ({
               groupId: g.id,
               groupTitle: g.title,
-              chatId: g.chat_id
-            }))
+              chatId: g.chat_id,
+            })),
           };
 
           log.info('[TEST MODE] Would remove user from groups', {
             userId,
             groupCount: groupsToRemoveFrom.length,
-            totalGroups: userGroups.length
+            totalGroups: userGroups.length,
           });
 
           return userToRemove;
@@ -165,13 +173,13 @@ export class MembershipService {
               log.info('User removed from group', {
                 userId,
                 groupId: group.id,
-                groupTitle: group.title
+                groupTitle: group.title,
               });
             } catch (error) {
               log.error('Failed to remove user from Telegram group', {
                 userId,
                 groupId: group.id,
-                error
+                error,
               });
             }
           }
@@ -184,12 +192,12 @@ export class MembershipService {
           // Send notification to user that they were removed
           if (groupsToRemoveFrom.length > 0) {
             try {
-              const groupList = groupsToRemoveFrom.map(g => `• ${g.title}`).join('\n');
+              const groupList = groupsToRemoveFrom.map((g) => `• ${g.title}`).join('\n');
               await this.bot.sendMessage(
                 userId,
                 `❌ Ваша подписка в Montana закончилась.\n\n` +
-                `Вы были удалены из следующих чатов:\n${groupList}\n\n` +
-                `Чтобы вернуть доступ, вступите обратно в основную группу Montana.`
+                  `Вы были удалены из следующих чатов:\n${groupList}\n\n` +
+                  `Чтобы вернуть доступ, вступите обратно в основную группу Montana.`
               );
             } catch (error) {
               // User might have blocked the bot or privacy settings prevent messaging
@@ -199,7 +207,7 @@ export class MembershipService {
 
           log.info('User removed from all managed groups', {
             userId,
-            removedCount: groupsToRemoveFrom.length
+            removedCount: groupsToRemoveFrom.length,
           });
 
           return null;
@@ -255,7 +263,7 @@ export class MembershipService {
 
       log.info('Membership sync completed', {
         checkedCount: uniqueUsers.size,
-        toRemoveCount: usersToRemove.length
+        toRemoveCount: usersToRemove.length,
       });
 
       return usersToRemove;
@@ -282,7 +290,9 @@ export class MembershipService {
       // Get all members using getChatAdministrators as fallback
       // Note: Telegram Bot API doesn't provide full member list for groups
       // We can only get admins, so this is limited
-      log.warn('Note: Bot API can only sync administrators. Regular members will be synced as they interact.');
+      log.warn(
+        'Note: Bot API can only sync administrators. Regular members will be synced as they interact.'
+      );
 
       const admins = await this.bot.getChatAdministrators(chatId);
 
@@ -381,5 +391,4 @@ export class MembershipService {
 
     return { synced, errors };
   }
-
 }

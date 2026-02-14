@@ -13,17 +13,12 @@ export class DiscordPendingInviteRepository {
       )
       VALUES ($1, $2, $3, $4)
       RETURNING *`,
-      [
-        invite.telegram_id,
-        invite.invite_code,
-        invite.invite_url,
-        invite.expires_at
-      ]
+      [invite.telegram_id, invite.invite_code, invite.invite_url, invite.expires_at]
     );
 
     log.info('Discord pending invite created', {
       telegramId: invite.telegram_id,
-      inviteCode: invite.invite_code
+      inviteCode: invite.invite_code,
     });
 
     return result.rows[0];
@@ -33,10 +28,9 @@ export class DiscordPendingInviteRepository {
    * Find by invite code
    */
   async findByCode(code: string): Promise<DiscordPendingInvite | null> {
-    const result = await query(
-      'SELECT * FROM discord_pending_invites WHERE invite_code = $1',
-      [code]
-    );
+    const result = await query('SELECT * FROM discord_pending_invites WHERE invite_code = $1', [
+      code,
+    ]);
     return result.rows[0] || null;
   }
 

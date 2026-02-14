@@ -111,10 +111,10 @@ export class MessageService {
     const m = this.messages.mystats;
     let message = `${m.title}\n\n${m.profile}\n`;
 
-    message += this.replaceParams(m.user_id, { userId: data.userId }) + '\n';
+    message += `${this.replaceParams(m.user_id, { userId: data.userId })}\n`;
 
     if (data.username) {
-      message += this.replaceParams(m.username, { username: data.username }) + '\n';
+      message += `${this.replaceParams(m.username, { username: data.username })}\n`;
     }
 
     message += data.isInMainGroup ? m.main_group_member : m.main_group_not_member;
@@ -127,16 +127,20 @@ export class MessageService {
 
       if (data.permanentGroups.length > 0) {
         message += `\n${m.permanent_groups}\n`;
-        data.permanentGroups.forEach(group => {
-          const badge = ['administrator', 'creator'].includes(group.status || '') ? m.admin_badge : '';
+        data.permanentGroups.forEach((group) => {
+          const badge = ['administrator', 'creator'].includes(group.status || '')
+            ? m.admin_badge
+            : '';
           message += `• ${group.title}${badge}\n`;
         });
       }
 
       if (data.regularGroups.length > 0) {
         message += `\n${m.normal_groups}\n`;
-        data.regularGroups.forEach(group => {
-          const badge = ['administrator', 'creator'].includes(group.status || '') ? m.admin_badge : '';
+        data.regularGroups.forEach((group) => {
+          const badge = ['administrator', 'creator'].includes(group.status || '')
+            ? m.admin_badge
+            : '';
           message += `• ${group.title}${badge}\n`;
         });
       }
@@ -157,43 +161,43 @@ export class MessageService {
   }): string {
     const m = this.messages.listgroups;
     let message = `${m.title}\n\n`;
-    message += this.replaceParams(m.total, { count: data.total }) + '\n\n';
+    message += `${this.replaceParams(m.total, { count: data.total })}\n\n`;
 
     if (data.mainGroup) {
       message += `${m.main_group}\n`;
       message += `• ${data.mainGroup.title}\n`;
-      message += this.replaceParams(m.group_id, { chatId: data.mainGroup.chat_id }) + '\n\n';
+      message += `${this.replaceParams(m.group_id, { chatId: data.mainGroup.chat_id })}\n\n`;
     }
 
     if (data.permanentGroups.length > 0) {
-      message += this.replaceParams(m.permanent_groups, { count: data.permanentGroups.length }) + '\n';
-      data.permanentGroups.forEach(group => {
+      message += `${this.replaceParams(m.permanent_groups, { count: data.permanentGroups.length })}\n`;
+      data.permanentGroups.forEach((group) => {
         message += `• ${group.title}\n`;
-        message += this.replaceParams(m.group_id, { chatId: group.chat_id }) + '\n';
+        message += `${this.replaceParams(m.group_id, { chatId: group.chat_id })}\n`;
         if (group.access_duration_hours) {
-          message += this.replaceParams(m.access_window, { hours: group.access_duration_hours }) + '\n';
+          message += `${this.replaceParams(m.access_window, { hours: group.access_duration_hours })}\n`;
         }
       });
       message += '\n';
     }
 
     if (data.regularGroups.length > 0) {
-      message += this.replaceParams(m.normal_groups, { count: data.regularGroups.length }) + '\n';
-      data.regularGroups.forEach(group => {
+      message += `${this.replaceParams(m.normal_groups, { count: data.regularGroups.length })}\n`;
+      data.regularGroups.forEach((group) => {
         message += `• ${group.title}\n`;
-        message += this.replaceParams(m.group_id, { chatId: group.chat_id }) + '\n';
+        message += `${this.replaceParams(m.group_id, { chatId: group.chat_id })}\n`;
         if (group.access_duration_hours) {
-          message += this.replaceParams(m.access_window, { hours: group.access_duration_hours }) + '\n';
+          message += `${this.replaceParams(m.access_window, { hours: group.access_duration_hours })}\n`;
         }
       });
       message += '\n';
     }
 
     if (data.inactiveGroups.length > 0) {
-      message += this.replaceParams(m.inactive_groups, { count: data.inactiveGroups.length }) + '\n';
-      data.inactiveGroups.forEach(group => {
+      message += `${this.replaceParams(m.inactive_groups, { count: data.inactiveGroups.length })}\n`;
+      data.inactiveGroups.forEach((group) => {
         message += `• ${group.title}\n`;
-        message += this.replaceParams(m.group_id, { chatId: group.chat_id }) + '\n';
+        message += `${this.replaceParams(m.group_id, { chatId: group.chat_id })}\n`;
       });
     }
 

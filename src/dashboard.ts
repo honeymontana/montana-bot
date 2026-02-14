@@ -5,25 +5,26 @@
 import dotenv from 'dotenv';
 import { startDashboardServer } from './api/DashboardAPI';
 import { query as dbQuery, closeDatabase } from './database/connection';
+import { log } from './utils/logger';
 
 // Wrapper для совместимости
 const db = {
   query: dbQuery,
-  end: closeDatabase
+  end: closeDatabase,
 };
 
 // Загружаем переменные окружения
 dotenv.config();
 
 async function main() {
-  console.log('🚀 Запуск Montana Bot Dashboard...\n');
+  log.info('Starting Montana Bot Dashboard...');
 
   // Проверяем подключение к базе данных
   try {
     await db.query('SELECT NOW()');
-    console.log('✅ База данных подключена');
+    log.info('Database connection established successfully');
   } catch (error) {
-    console.error('❌ Ошибка подключения к базе данных:', error);
+    log.error('Failed to connect to database', error);
     process.exit(1);
   }
 
@@ -33,20 +34,20 @@ async function main() {
 }
 
 // Запускаем приложение
-main().catch(error => {
-  console.error('❌ Критическая ошибка:', error);
+main().catch((error) => {
+  log.error('Critical error during dashboard startup', error);
   process.exit(1);
 });
 
 // Обработка завершения
 process.on('SIGINT', async () => {
-  console.log('\n👋 Завершение работы дашборда...');
+  log.info('Received SIGINT signal, shutting down dashboard gracefully...');
   await db.end();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  console.log('\n👋 Завершение работы дашборда...');
+  log.info('Received SIGTERM signal, shutting down dashboard gracefully...');
   await db.end();
   process.exit(0);
 });

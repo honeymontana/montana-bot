@@ -19,9 +19,7 @@ export class GroupRepository {
   }
 
   async findAllActive(): Promise<Group[]> {
-    const result = await query(
-      'SELECT * FROM groups WHERE is_active = true ORDER BY title'
-    );
+    const result = await query('SELECT * FROM groups WHERE is_active = true ORDER BY title');
     return result.rows;
   }
 
@@ -68,7 +66,7 @@ export class GroupRepository {
       chatId: group.chat_id,
       title: group.title,
       isPermanent: group.is_permanent,
-      accessDurationHours: group.access_duration_hours
+      accessDurationHours: group.access_duration_hours,
     });
     return result.rows[0];
   }

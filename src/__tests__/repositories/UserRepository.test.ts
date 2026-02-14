@@ -55,7 +55,7 @@ describe('UserRepository', () => {
       };
 
       const createdUser: User = {
-        ...newUser as User,
+        ...(newUser as User),
         is_premium: false,
         created_at: new Date(),
         updated_at: new Date(),
@@ -65,18 +65,15 @@ describe('UserRepository', () => {
 
       const result = await userRepo.create(newUser);
 
-      expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO users'),
-        [
-          newUser.id,
-          newUser.username,
-          newUser.first_name,
-          newUser.last_name,
-          false,
-          undefined,
-          false,
-        ]
-      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO users'), [
+        newUser.id,
+        newUser.username,
+        newUser.first_name,
+        newUser.last_name,
+        false,
+        undefined,
+        false,
+      ]);
       expect(result).toEqual(createdUser);
     });
   });
@@ -116,10 +113,10 @@ describe('UserRepository', () => {
 
       const result = await userRepo.isUserInGroup(123456, 'group-1');
 
-      expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT 1 FROM user_groups'),
-        [123456, 'group-1']
-      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('SELECT 1 FROM user_groups'), [
+        123456,
+        'group-1',
+      ]);
       expect(result).toBe(true);
     });
 
@@ -138,10 +135,11 @@ describe('UserRepository', () => {
 
       await userRepo.addToGroup(123456, 'group-1', 'member');
 
-      expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO user_groups'),
-        [123456, 'group-1', 'member']
-      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO user_groups'), [
+        123456,
+        'group-1',
+        'member',
+      ]);
     });
   });
 

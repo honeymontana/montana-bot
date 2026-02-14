@@ -21,7 +21,7 @@ export class MontanaBot {
 
   constructor() {
     this.bot = new TelegramBot(config.bot.token, {
-      polling: config.bot.polling
+      polling: config.bot.polling,
     });
 
     this.membershipService = new MembershipService(this.bot);
@@ -62,8 +62,8 @@ export class MontanaBot {
     }
 
     try {
-      // Initialize Discord service
-      this.discordService = new DiscordService();
+      // Initialize Discord service with Telegram bot instance
+      this.discordService = new DiscordService(this.bot);
       const connected = await this.discordService.connect();
 
       if (!connected) {
@@ -95,7 +95,7 @@ export class MontanaBot {
 
       log.info('Main group initialized', {
         chatId: mainGroupId,
-        title: chat.title
+        title: chat.title,
       });
     } catch (error) {
       log.error('Failed to initialize main group', error);
@@ -111,7 +111,7 @@ export class MontanaBot {
           userId: msg.from?.id,
           username: msg.from?.username,
           chatId: msg.chat.id,
-          chatType: msg.chat.type
+          chatType: msg.chat.type,
         });
       }
     });
@@ -196,6 +196,11 @@ export class MontanaBot {
       await this.handleMemberLeft(msg);
     });
 
+    // Handle callback queries (inline buttons)
+    this.bot.on('callback_query', async (query) => {
+      await this.handleCallbackQuery(query);
+    });
+
     // Error handling
     this.bot.on('polling_error', (error) => {
       log.error('Polling error', error);
@@ -229,22 +234,14 @@ export class MontanaBot {
 
       // Discord link action
       if (deepLinkParam === 'discord' || deepLinkParam === 'linkdiscord') {
-        await this.bot.sendMessage(
-          chatId,
-          '🔗 Привязка Discord аккаунта\n\n' +
-          'Выберите способ:'
-        );
-        await this.handleLinkDiscord(msg);
+        await this.handleDiscord(msg, 'привязать');
         return;
       }
 
       // Referral link (например: start=ref_12345)
       if (deepLinkParam.startsWith('ref_')) {
         const referrerId = deepLinkParam.replace('ref_', '');
-        await this.bot.sendMessage(
-          chatId,
-          `✅ Вы присоединились по реферальной ссылке!`
-        );
+        await this.bot.sendMessage(chatId, `✅ Вы присоединились по реферальной ссылке!`);
         log.info('Referral link used', { userId, referrerId });
         // Здесь можно добавить логику начисления бонусов
       }
@@ -252,10 +249,7 @@ export class MontanaBot {
       // Promo code (например: start=promo_summer)
       if (deepLinkParam.startsWith('promo_')) {
         const promoCode = deepLinkParam.replace('promo_', '');
-        await this.bot.sendMessage(
-          chatId,
-          `🎁 Промокод "${promoCode}" активирован!`
-        );
+        await this.bot.sendMessage(chatId, `🎁 Промокод "${promoCode}" активирован!`);
         log.info('Promo code used', { userId, promoCode });
       }
 
@@ -264,8 +258,7 @@ export class MontanaBot {
         const groupId = deepLinkParam.replace('group_', '');
         await this.bot.sendMessage(
           chatId,
-          `Приглашение в группу #${groupId}\n\n` +
-          `Используйте /status чтобы проверить доступ.`
+          `Приглашение в группу #${groupId}\n\n` + `Используйте /status чтобы проверить доступ.`
         );
         log.info('Group invite link used', { userId, groupId });
       }
@@ -287,7 +280,6 @@ export class MontanaBot {
 
     await this.bot.sendMessage(chatId, welcomeMessage.trim());
   }
-
 
   private async handleStatus(msg: TelegramBot.Message): Promise<void> {
     const chatId = msg.chat.id;
@@ -330,9 +322,15 @@ export class MontanaBot {
       const message = this.formatRemovalList(usersToRemove);
       await this.bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
     } else if (config.telegram.testMode) {
-      await this.bot.sendMessage(chatId, '✅ Синхронизация завершена (ТЕСТ). Пользователей для удаления не найдено.');
+      await this.bot.sendMessage(
+        chatId,
+        '✅ Синхронизация завершена (ТЕСТ). Пользователей для удаления не найдено.'
+      );
     } else {
-      await this.bot.sendMessage(chatId, `✅ Синхронизация завершена. Удалено пользователей: ${usersToRemove.length}`);
+      await this.bot.sendMessage(
+        chatId,
+        `✅ Синхронизация завершена. Удалено пользователей: ${usersToRemove.length}`
+      );
     }
   }
 
@@ -355,9 +353,9 @@ export class MontanaBot {
         await this.bot.sendMessage(
           chatId,
           'Использование: /addgroup <chat_id> [часы]\n\n' +
-          'Примеры:\n' +
-          '/addgroup -1001234567890 - добавить группу без ограничения времени\n' +
-          '/addgroup -1001234567890 48 - доступ только 48 часов с момента добавления'
+            'Примеры:\n' +
+            '/addgroup -1001234567890 - добавить группу без ограничения времени\n' +
+            '/addgroup -1001234567890 48 - доступ только 48 часов с момента добавления'
         );
         return;
       }
@@ -418,7 +416,11 @@ export class MontanaBot {
     const userId = msg.from?.id;
 
     if (!userId || !this.isAdmin(userId)) {
-      log.warn('Unauthorized /addpermanentgroup attempt', { userId, chatId, username: msg.from?.username });
+      log.warn('Unauthorized /addpermanentgroup attempt', {
+        userId,
+        chatId,
+        username: msg.from?.username,
+      });
       await this.bot.sendMessage(chatId, 'У вас нет прав для выполнения этой команды.');
       return;
     }
@@ -433,9 +435,9 @@ export class MontanaBot {
         await this.bot.sendMessage(
           chatId,
           'Использование: /addpermanentgroup <chat_id> [часы]\n\n' +
-          'Примеры:\n' +
-          '/addpermanentgroup -1001234567890 - постоянная группа без ограничения времени\n' +
-          '/addpermanentgroup -1001234567890 48 - окно для вступления 48 часов'
+            'Примеры:\n' +
+            '/addpermanentgroup -1001234567890 - постоянная группа без ограничения времени\n' +
+            '/addpermanentgroup -1001234567890 48 - окно для вступления 48 часов'
         );
         return;
       }
@@ -484,7 +486,11 @@ export class MontanaBot {
 
       await this.bot.sendMessage(chatId, responseMsg);
 
-      log.info('Permanent group added', { chatId: targetChatId, title: group.title, accessDurationHours });
+      log.info('Permanent group added', {
+        chatId: targetChatId,
+        title: group.title,
+        accessDurationHours,
+      });
     } catch (error) {
       log.error('Failed to add permanent group', { chatId: targetChatId, error });
       await this.bot.sendMessage(
@@ -525,9 +531,9 @@ export class MontanaBot {
       await this.bot.sendMessage(
         chatId,
         'Использование: /updategroup <chat_id> [часы|unlimited]\n\n' +
-        'Примеры:\n' +
-        '/updategroup -1001234567890 unlimited - убрать ограничение времени\n' +
-        '/updategroup -1001234567890 72 - установить окно доступа 72 часа с текущего момента'
+          'Примеры:\n' +
+          '/updategroup -1001234567890 unlimited - убрать ограничение времени\n' +
+          '/updategroup -1001234567890 72 - установить окно доступа 72 часа с текущего момента'
       );
       return;
     }
@@ -542,7 +548,10 @@ export class MontanaBot {
 
     const group = await this.groupRepo.findByChatId(targetChatId);
     if (!group) {
-      await this.bot.sendMessage(chatId, '❌ Группа не найдена в базе данных. Сначала добавьте её через /addgroup');
+      await this.bot.sendMessage(
+        chatId,
+        '❌ Группа не найдена в базе данных. Сначала добавьте её через /addgroup'
+      );
       return;
     }
 
@@ -553,7 +562,10 @@ export class MontanaBot {
       } else {
         accessDurationHours = parseInt(parts[1]);
         if (isNaN(accessDurationHours)) {
-          await this.bot.sendMessage(chatId, '❌ Неверный формат времени. Используйте число или "unlimited"');
+          await this.bot.sendMessage(
+            chatId,
+            '❌ Неверный формат времени. Используйте число или "unlimited"'
+          );
           return;
         }
       }
@@ -561,7 +573,7 @@ export class MontanaBot {
 
     // Update group with new access duration and reset created_at to NOW
     await this.groupRepo.update(group.id, {
-      access_duration_hours: accessDurationHours
+      access_duration_hours: accessDurationHours,
     });
 
     // Also reset created_at to current timestamp to restart the access window
@@ -623,7 +635,10 @@ export class MontanaBot {
       return;
     }
 
-    await this.bot.sendMessage(chatId, '🔄 Запускаю ПОЛНУЮ синхронизацию (MTProto API)...\n\nЭто может занять несколько минут для больших групп.');
+    await this.bot.sendMessage(
+      chatId,
+      '🔄 Запускаю ПОЛНУЮ синхронизацию (MTProto API)...\n\nЭто может занять несколько минут для больших групп.'
+    );
 
     const { synced, errors } = await this.membershipService.fullSyncGroupMembers(chatId);
 
@@ -639,11 +654,7 @@ export class MontanaBot {
 
     log.info('Processing join request', { userId, chatId });
 
-    const result = await this.membershipService.processJoinRequest(
-      userId,
-      chatId,
-      request.from
-    );
+    const result = await this.membershipService.processJoinRequest(userId, chatId, request.from);
 
     if (!result.approved) {
       await this.bot.declineChatJoinRequest(chatId, userId);
@@ -653,16 +664,20 @@ export class MontanaBot {
         let message = '';
 
         if (result.reason === 'not_in_main_group') {
-          message = 'Ваша заявка отклонена.\n\n' +
+          message =
+            'Ваша заявка отклонена.\n\n' +
             'Для вступления в дополнительные группы необходимо быть участником основной группы Montana.';
         } else if (result.reason === 'access_window_closed') {
-          message = 'Ваша заявка отклонена.\n\n' +
+          message =
+            'Ваша заявка отклонена.\n\n' +
             '⏰ Окно для вступления в эту группу закрыто. Доступ к группе был ограничен по времени.';
         } else if (result.reason === 'already_member') {
-          message = 'Ваша заявка отклонена.\n\n' +
+          message =
+            'Ваша заявка отклонена.\n\n' +
             '✅ Вы уже являетесь участником этой группы. Повторная заявка не требуется.';
         } else {
-          message = 'Ваша заявка отклонена.\n\n' +
+          message =
+            'Ваша заявка отклонена.\n\n' +
             'Произошла ошибка при обработке вашей заявки. Пожалуйста, попробуйте позже.';
         }
 
@@ -683,7 +698,7 @@ export class MontanaBot {
     log.info('Member left chat', {
       userId: leftMember.id,
       chatId,
-      username: leftMember.username
+      username: leftMember.username,
     });
 
     // Check if this is the main group
@@ -699,7 +714,6 @@ export class MontanaBot {
     }
   }
 
-
   private async handleCheckRemoval(msg: TelegramBot.Message): Promise<void> {
     const chatId = msg.chat.id;
     const userId = msg.from?.id;
@@ -713,7 +727,10 @@ export class MontanaBot {
     const usersToRemove = await this.membershipService.syncMemberships();
 
     if (usersToRemove.length === 0) {
-      await this.bot.sendMessage(chatId, '✅ Все пользователи в актуальном состоянии. Никого не нужно удалять.');
+      await this.bot.sendMessage(
+        chatId,
+        '✅ Все пользователи в актуальном состоянии. Никого не нужно удалять.'
+      );
       return;
     }
 
@@ -737,7 +754,7 @@ export class MontanaBot {
       message += `${index + 1}. <b>${userName}</b> (ID: <code>${user.userId}</code>)\n`;
       message += `   Будет удален из групп:\n`;
 
-      user.groups.forEach(group => {
+      user.groups.forEach((group) => {
         message += `   • ${group.groupTitle}\n`;
       });
 
@@ -834,20 +851,22 @@ export class MontanaBot {
       if (userGroups.length > 0) {
         statsMessage += `\n📁 *Ваши группы (${userGroups.length}):*\n`;
 
-        const activeGroups = userGroups.filter(g => !g.is_main_group && ['member', 'administrator', 'creator'].includes(g.status || ''));
-        const permanentGroups = activeGroups.filter(g => g.is_permanent);
-        const regularGroups = activeGroups.filter(g => !g.is_permanent);
+        const activeGroups = userGroups.filter(
+          (g) => !g.is_main_group && ['member', 'administrator', 'creator'].includes(g.status || '')
+        );
+        const permanentGroups = activeGroups.filter((g) => g.is_permanent);
+        const regularGroups = activeGroups.filter((g) => !g.is_permanent);
 
         if (permanentGroups.length > 0) {
           statsMessage += `\n⭐ *Постоянные группы:*\n`;
-          permanentGroups.forEach(group => {
+          permanentGroups.forEach((group) => {
             statsMessage += `• ${group.title}${group.status === 'administrator' || group.status === 'creator' ? ' 👑' : ''}\n`;
           });
         }
 
         if (regularGroups.length > 0) {
           statsMessage += `\n📺 *Обычные группы:*\n`;
-          regularGroups.forEach(group => {
+          regularGroups.forEach((group) => {
             statsMessage += `• ${group.title}${group.status === 'administrator' || group.status === 'creator' ? ' 👑' : ''}\n`;
           });
         }
@@ -883,10 +902,14 @@ export class MontanaBot {
         return;
       }
 
-      const mainGroup = allGroups.find(g => g.is_main_group);
-      const permanentGroups = allGroups.filter(g => !g.is_main_group && g.is_permanent && g.is_active);
-      const regularGroups = allGroups.filter(g => !g.is_main_group && !g.is_permanent && g.is_active);
-      const inactiveGroups = allGroups.filter(g => !g.is_active);
+      const mainGroup = allGroups.find((g) => g.is_main_group);
+      const permanentGroups = allGroups.filter(
+        (g) => !g.is_main_group && g.is_permanent && g.is_active
+      );
+      const regularGroups = allGroups.filter(
+        (g) => !g.is_main_group && !g.is_permanent && g.is_active
+      );
+      const inactiveGroups = allGroups.filter((g) => !g.is_active);
 
       let message = `📋 *Список всех групп*\n\n`;
       message += `📊 Всего: ${allGroups.length} групп\n\n`;
@@ -899,7 +922,7 @@ export class MontanaBot {
 
       if (permanentGroups.length > 0) {
         message += `⭐ *Постоянные группы (${permanentGroups.length}):*\n`;
-        permanentGroups.forEach(group => {
+        permanentGroups.forEach((group) => {
           message += `• ${group.title}\n`;
           message += `  ID: \`${group.chat_id}\`\n`;
           if (group.access_duration_hours) {
@@ -911,7 +934,7 @@ export class MontanaBot {
 
       if (regularGroups.length > 0) {
         message += `📺 *Обычные группы (${regularGroups.length}):*\n`;
-        regularGroups.forEach(group => {
+        regularGroups.forEach((group) => {
           message += `• ${group.title}\n`;
           message += `  ID: \`${group.chat_id}\`\n`;
           if (group.access_duration_hours) {
@@ -923,7 +946,7 @@ export class MontanaBot {
 
       if (inactiveGroups.length > 0) {
         message += `❌ *Неактивные группы (${inactiveGroups.length}):*\n`;
-        inactiveGroups.forEach(group => {
+        inactiveGroups.forEach((group) => {
           message += `• ${group.title} (ID: \`${group.chat_id}\`)\n`;
         });
       }
@@ -945,9 +968,7 @@ export class MontanaBot {
 
     // Add Discord commands if enabled
     if (config.discord.enabled) {
-      commands.push(
-        { command: 'discord', description: 'Discord интеграция и статус' }
-      );
+      commands.push({ command: 'discord', description: 'Discord интеграция и статус' });
     }
 
     const adminCommands: TelegramBot.BotCommand[] = [
@@ -995,7 +1016,7 @@ export class MontanaBot {
           for (const adminId of config.telegram.adminIds) {
             try {
               await this.bot.sendMessage(adminId, `🔄 Периодическая проверка\n\n${message}`, {
-                parse_mode: 'HTML'
+                parse_mode: 'HTML',
               });
             } catch (error) {
               log.error('Failed to send periodic sync notification to admin', { adminId, error });
@@ -1021,21 +1042,26 @@ export class MontanaBot {
     };
 
     // Run immediately on start
-    runSync().catch(error => log.error('Initial sync failed', error));
+    runSync().catch((error) => log.error('Initial sync failed', error));
 
     // Then run periodically
     this.syncInterval = setInterval(() => {
-      runSync().catch(error => log.error('Periodic sync failed', error));
+      runSync().catch((error) => log.error('Periodic sync failed', error));
     }, intervalMs);
 
-    log.info(`Periodic sync started (every ${config.telegram.checkIntervalMinutes} minutes)${config.telegram.testMode ? ' [TEST MODE]' : ''}`);
+    log.info(
+      `Periodic sync started (every ${config.telegram.checkIntervalMinutes} minutes)${config.telegram.testMode ? ' [TEST MODE]' : ''}`
+    );
   }
 
   private isAdmin(userId: number): boolean {
     return config.telegram.adminIds.includes(userId);
   }
 
-  private async checkAdminAndReply(msg: TelegramBot.Message, commandName: string): Promise<boolean> {
+  private async checkAdminAndReply(
+    msg: TelegramBot.Message,
+    commandName: string
+  ): Promise<boolean> {
     const chatId = msg.chat.id;
     const userId = msg.from?.id;
 
@@ -1045,7 +1071,7 @@ export class MontanaBot {
         username: msg.from?.username,
         chatId,
         chatType: msg.chat.type,
-        chatTitle: msg.chat.title
+        chatTitle: msg.chat.title,
       });
       await this.bot.sendMessage(chatId, 'У вас нет прав для выполнения этой команды.');
       return false;
@@ -1065,28 +1091,9 @@ export class MontanaBot {
     }
 
     // OAuth removed - use /discord command instead
-    await this.bot.sendMessage(chatId, '⚠️ Эта команда устарела. Используйте /discord чтобы привязать аккаунт.');
-    return;
-
-    // Check if already linked
-    const existingLink = await this.discordRepo.findByTelegramId(userId);
-    if (existingLink) {
-      await this.bot.sendMessage(
-        chatId,
-        `⚠️ Ваш Telegram уже привязан к Discord аккаунту: ${existingLink.discord_username}\n\n` +
-        `Если вы хотите привязать другой Discord аккаунт, сначала используйте /unlinkdiscord`
-      );
-      return;
-    }
-
-    const authUrl = '';  // OAuth removed
-
     await this.bot.sendMessage(
       chatId,
-      `🔗 Привязка Discord аккаунта\n\n` +
-      `Нажмите на ссылку ниже, чтобы авторизоваться через Discord и привязать ваш аккаунт:\n\n` +
-      `${authUrl}\n\n` +
-      `После успешной авторизации вы получите подтверждение.`
+      '⚠️ Эта команда устарела. Используйте /discord чтобы привязать аккаунт.'
     );
   }
 
@@ -1121,13 +1128,13 @@ export class MontanaBot {
     await this.bot.sendMessage(
       chatId,
       `✅ Discord аккаунт ${existingLink.discord_username} успешно отвязан.\n\n` +
-      `Вы можете привязать другой аккаунт с помощью команды /linkdiscord`
+        `Вы можете привязать другой аккаунт с помощью команды /linkdiscord`
     );
 
     log.info('Discord account unlinked', {
       telegramId: userId,
       discordId: existingLink.discord_id,
-      discordUsername: existingLink.discord_username
+      discordUsername: existingLink.discord_username,
     });
   }
 
@@ -1148,7 +1155,7 @@ export class MontanaBot {
       await this.bot.sendMessage(
         chatId,
         `❌ Ваш Telegram уже привязан к Discord аккаунту: ${existingLink.discord_username}\n\n` +
-        `Используйте /unlinkdiscord чтобы сначала отвязать текущий аккаунт.`
+          `Используйте /unlinkdiscord чтобы сначала отвязать текущий аккаунт.`
       );
       return;
     }
@@ -1158,13 +1165,13 @@ export class MontanaBot {
       await this.bot.sendMessage(
         chatId,
         `💡 Как найти свой Discord User ID:\n\n` +
-        `1. Откройте Discord\n` +
-        `2. Настройки → Расширенные → Включите "Режим разработчика"\n` +
-        `3. ПКМ на своём имени → "Копировать ID пользователя"\n` +
-        `4. Отправьте: /setdiscord ВАШ_ID\n\n` +
-        `Пример: /setdiscord 123456789012345678\n\n` +
-        `⚠️ Внимание: Этот способ не даёт роль автоматически на Discord сервере.\n` +
-        `Для автоматической выдачи роли используйте /linkdiscord`
+          `1. Откройте Discord\n` +
+          `2. Настройки → Расширенные → Включите "Режим разработчика"\n` +
+          `3. ПКМ на своём имени → "Копировать ID пользователя"\n` +
+          `4. Отправьте: /setdiscord ВАШ_ID\n\n` +
+          `Пример: /setdiscord 123456789012345678\n\n` +
+          `⚠️ Внимание: Этот способ не даёт роль автоматически на Discord сервере.\n` +
+          `Для автоматической выдачи роли используйте /linkdiscord`
       );
       return;
     }
@@ -1175,8 +1182,8 @@ export class MontanaBot {
       await this.bot.sendMessage(
         chatId,
         '❌ Неверный формат Discord User ID.\n\n' +
-        'Discord ID должен содержать 17-20 цифр.\n' +
-        'Пример: 123456789012345678'
+          'Discord ID должен содержать 17-20 цифр.\n' +
+          'Пример: 123456789012345678'
       );
       return;
     }
@@ -1195,20 +1202,20 @@ export class MontanaBot {
     await this.discordRepo.upsert({
       telegram_id: userId,
       discord_id: discordId,
-      discord_username: `User#${discordId.slice(-4)}` // Temporary username
+      discord_username: `User#${discordId.slice(-4)}`, // Temporary username
     });
 
     await this.bot.sendMessage(
       chatId,
       `✅ Discord User ID успешно привязан!\n\n` +
-      `Discord ID: ${discordId}\n\n` +
-      `⚠️ Роль на Discord сервере нужно выдать вручную.\n` +
-      `Для автоматической выдачи роли используйте /linkdiscord`
+        `Discord ID: ${discordId}\n\n` +
+        `⚠️ Роль на Discord сервере нужно выдать вручную.\n` +
+        `Для автоматической выдачи роли используйте /linkdiscord`
     );
 
     log.info('Discord ID manually linked', {
       telegramId: userId,
-      discordId: discordId
+      discordId: discordId,
     });
   }
 
@@ -1229,8 +1236,8 @@ export class MontanaBot {
       await this.bot.sendMessage(
         chatId,
         `📊 Discord статус:\n\n` +
-        `❌ Аккаунт не привязан\n\n` +
-        `Используйте /linkdiscord для привязки вашего Discord аккаунта.`
+          `❌ Аккаунт не привязан\n\n` +
+          `Используйте /linkdiscord для привязки вашего Discord аккаунта.`
       );
       return;
     }
@@ -1282,11 +1289,21 @@ export class MontanaBot {
         await this.bot.sendMessage(
           chatId,
           `🎮 Discord интеграция\n\n` +
-          `❌ Аккаунт не привязан\n\n` +
-          `💡 Чтобы привязать Discord:\n` +
-          `/discord привязать\n\n` +
-          `Вы получите одноразовую ссылку-приглашение на Discord сервер.\n` +
-          `После перехода по ссылке ваш аккаунт будет автоматически привязан.`
+            `❌ Аккаунт не привязан\n\n` +
+            `💡 Вы получите одноразовую ссылку-приглашение на Discord сервер.\n` +
+            `После перехода по ссылке ваш аккаунт будет автоматически привязан.`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: '🔗 Привязать Discord',
+                    callback_data: 'discord_link',
+                  },
+                ],
+              ],
+            },
+          }
         );
         return;
       }
@@ -1299,16 +1316,29 @@ export class MontanaBot {
       statusMessage += `🏷️ Montana: ${isInMainGroup ? '✅ Активно' : '❌ Не активно'}\n\n`;
 
       if (isInMainGroup) {
-        statusMessage += `✨ У вас есть доступ к Montana Discord серверу!\n\n`;
+        statusMessage += `✨ У вас есть доступ к Montana Discord серверу!`;
       } else {
-        statusMessage += `⚠️ Для доступа вступите в Montana Telegram группу.\n\n`;
+        statusMessage += `⚠️ Для доступа вступите в Montana Telegram группу.`;
       }
 
-      statusMessage += `💡 Команды:\n`;
-      statusMessage += `/discord привязать - получить новую invite ссылку\n`;
-      statusMessage += `/discord отвязать - отвязать аккаунт`;
-
-      await this.bot.sendMessage(chatId, statusMessage);
+      await this.bot.sendMessage(chatId, statusMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: '🔄 Привязать другой Discord',
+                callback_data: 'discord_link',
+              },
+            ],
+            [
+              {
+                text: '❌ Отвязать Discord',
+                callback_data: 'discord_unlink',
+              },
+            ],
+          ],
+        },
+      });
       return;
     }
 
@@ -1328,13 +1358,13 @@ export class MontanaBot {
       await this.bot.sendMessage(
         chatId,
         `✅ Discord аккаунт успешно отвязан.\n\n` +
-        `Вы можете привязать другой аккаунт командой:\n` +
-        `/discord привязать`
+          `Вы можете привязать другой аккаунт командой:\n` +
+          `/discord привязать`
       );
 
       log.info('Discord account unlinked', {
         telegramId: userId,
-        discordId: existingLink.discord_id
+        discordId: existingLink.discord_id,
       });
       return;
     }
@@ -1348,7 +1378,7 @@ export class MontanaBot {
         await this.bot.sendMessage(
           chatId,
           `❌ Доступ запрещён!\n\n` +
-          `Сначала вступите в основную Montana группу, чтобы получить доступ к Discord серверу.`
+            `Сначала вступите в основную Montana группу, чтобы получить доступ к Discord серверу.`
         );
         return;
       }
@@ -1363,10 +1393,10 @@ export class MontanaBot {
         await this.bot.sendMessage(
           chatId,
           `⚠️ У вас уже есть активная invite ссылка!\n\n` +
-          `🔗 ${activePendingInvite.invite_url}\n\n` +
-          `⏰ Истекает через: ${hoursLeft} ч.\n` +
-          `🎯 Максимум использований: 1\n\n` +
-          `После присоединения ваш аккаунт будет автоматически привязан.`
+            `🔗 ${activePendingInvite.invite_url}\n\n` +
+            `⏰ Истекает через: ${hoursLeft} ч.\n` +
+            `🎯 Максимум использований: 1\n\n` +
+            `После присоединения ваш аккаунт будет автоматически привязан.`
         );
         return;
       }
@@ -1374,12 +1404,17 @@ export class MontanaBot {
       // Deactivate old link if re-linking
       if (existingLink) {
         await this.discordService.deactivateOldLink(userId);
-        await this.bot.sendMessage(
-          chatId,
-          `🔄 Старая привязка деактивирована.\n` +
-          `Создаю новую invite ссылку...`
-        );
       }
+
+      // Ensure user exists in database (required for foreign key constraint)
+      await this.userRepo.create({
+        id: userId,
+        username: msg.from?.username,
+        first_name: msg.from?.first_name,
+        last_name: msg.from?.last_name,
+        language_code: msg.from?.language_code,
+        is_premium: msg.from?.is_premium,
+      });
 
       // Create one-time invite link
       const inviteUrl = await this.discordService.createOneTimeInvite(userId);
@@ -1387,27 +1422,30 @@ export class MontanaBot {
       if (!inviteUrl) {
         await this.bot.sendMessage(
           chatId,
-          `❌ Ошибка создания invite ссылки.\n` +
-          `Попробуйте позже или обратитесь к администратору.`
+          `❌ Ошибка создания invite ссылки.\n\n` +
+            `Discord бот сейчас недоступен или не подключен.\n` +
+            `Попробуйте через 1-2 минуты или обратитесь к администратору.`
         );
         return;
       }
 
+      const relinkMessage = existingLink ? `🔄 Старая привязка деактивирована.\n\n` : '';
+
       await this.bot.sendMessage(
         chatId,
-        `✅ Одноразовая invite ссылка создана!\n\n` +
-        `🔗 ${inviteUrl}\n\n` +
-        `⚠️ ВАЖНО:\n` +
-        `• Ссылка действительна 24 часа\n` +
-        `• Можно использовать только 1 раз\n` +
-        `• После присоединения аккаунт будет автоматически привязан\n` +
-        `• Если у вас уже есть привязка - старый аккаунт будет деактивирован\n\n` +
-        `💡 Проверить статус: /discord`
+        relinkMessage +
+          `✅ Одноразовая invite ссылка создана!\n\n` +
+          `🔗 ${inviteUrl}\n\n` +
+          `⚠️ ВАЖНО:\n` +
+          `• Ссылка действительна 24 часа\n` +
+          `• Можно использовать только 1 раз\n` +
+          `• После присоединения аккаунт будет автоматически привязан\n\n` +
+          `💡 Проверить статус: /discord`
       );
 
       log.info('Discord one-time invite created', {
         telegramId: userId,
-        inviteUrl
+        inviteUrl,
       });
       return;
     }
@@ -1416,10 +1454,10 @@ export class MontanaBot {
     await this.bot.sendMessage(
       chatId,
       `❌ Неизвестная команда.\n\n` +
-      `Доступные команды:\n` +
-      `/discord - показать статус\n` +
-      `/discord привязать - получить invite ссылку\n` +
-      `/discord отвязать - отвязать аккаунт`
+        `Доступные команды:\n` +
+        `/discord - показать статус\n` +
+        `/discord привязать - получить invite ссылку\n` +
+        `/discord отвязать - отвязать аккаунт`
     );
   }
 
@@ -1430,7 +1468,7 @@ export class MontanaBot {
 
     const intervalMs = config.telegram.checkIntervalMinutes * 60 * 1000;
 
-    const runDiscordSync = async () => {
+    const runDiscordSync = async (isInitialSync = false) => {
       try {
         if (!this.discordService) {
           log.warn('Discord service not available, skipping sync');
@@ -1449,15 +1487,18 @@ export class MontanaBot {
         } else {
           log.error('Discord role sync failed');
 
-          // Notify admins about Discord sync failure
-          for (const adminId of config.telegram.adminIds) {
-            try {
-              await this.bot.sendMessage(
-                adminId,
-                `⚠️ Discord синхронизация ролей не удалась. Проверьте статус Discord бота.`
-              );
-            } catch (error) {
-              log.error('Failed to notify admin about Discord sync failure', { adminId, error });
+          // Only notify admins about failures during periodic sync, not initial sync
+          // (initial sync often fails due to Discord bot not being connected yet)
+          if (!isInitialSync) {
+            for (const adminId of config.telegram.adminIds) {
+              try {
+                await this.bot.sendMessage(
+                  adminId,
+                  `⚠️ Discord синхронизация ролей не удалась. Проверьте статус Discord бота.`
+                );
+              } catch (error) {
+                log.error('Failed to notify admin about Discord sync failure', { adminId, error });
+              }
             }
           }
         }
@@ -1466,15 +1507,45 @@ export class MontanaBot {
       }
     };
 
-    // Run immediately on start
-    runDiscordSync().catch(error => log.error('Initial Discord sync failed', error));
+    // Run immediately on start (but don't notify admins if it fails)
+    runDiscordSync(true).catch((error) => log.error('Initial Discord sync failed', error));
 
-    // Then run periodically
+    // Then run periodically (will notify admins if it fails)
     this.discordSyncInterval = setInterval(() => {
-      runDiscordSync().catch(error => log.error('Discord periodic sync failed', error));
+      runDiscordSync(false).catch((error) => log.error('Discord periodic sync failed', error));
     }, intervalMs);
 
     log.info(`Discord role sync started (every ${config.telegram.checkIntervalMinutes} minutes)`);
+  }
+
+  /**
+   * Handle callback queries from inline buttons
+   */
+  private async handleCallbackQuery(query: TelegramBot.CallbackQuery): Promise<void> {
+    const chatId = query.message?.chat.id;
+    const userId = query.from.id;
+    const data = query.data;
+
+    if (!chatId || !data) return;
+
+    try {
+      // Acknowledge the callback
+      await this.bot.answerCallbackQuery(query.id);
+
+      if (data === 'discord_link') {
+        // Привязать Discord
+        await this.handleDiscord(query.message as TelegramBot.Message, 'привязать');
+      } else if (data === 'discord_unlink') {
+        // Отвязать Discord
+        await this.handleDiscord(query.message as TelegramBot.Message, 'отвязать');
+      }
+    } catch (error) {
+      log.error('Error handling callback query', { error, userId, data });
+      await this.bot.answerCallbackQuery(query.id, {
+        text: '❌ Произошла ошибка. Попробуйте позже.',
+        show_alert: true,
+      });
+    }
   }
 
   async stop(): Promise<void> {

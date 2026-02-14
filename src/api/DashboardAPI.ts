@@ -3,17 +3,54 @@
  */
 
 import express, { Request, Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { query as dbQuery } from '../database/connection';
 import { tributeService } from '../services/TributeService';
+import { performHealthCheck, checkReadiness, checkLiveness } from '../utils/healthCheck';
+import { errorHandler, RateLimitError } from '../utils/errors';
+import { log } from '../utils/logger';
 import path from 'path';
 
 // Wrapper для совместимости
 const db = {
   query: dbQuery,
-  end: async () => {}
+  end: async () => {},
 };
 
 const router = express.Router();
+
+/**
+ * Rate limiting configuration
+ */
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  handler: (req, res) => {
+    const error = new RateLimitError('Too many requests, please try again later', 900);
+    res.status(429).json({
+      error: error.message,
+      statusCode: error.statusCode,
+      retryAfter: error.retryAfter,
+    });
+  },
+});
+
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10, // Stricter limit for sensitive operations
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    const error = new RateLimitError('Too many requests, please try again later', 900);
+    res.status(429).json({
+      error: error.message,
+      statusCode: error.statusCode,
+      retryAfter: error.retryAfter,
+    });
+  },
+});
 
 /**
  * Middleware для проверки авторизации (простая реализация)
@@ -28,6 +65,55 @@ const authenticate = (req: Request, res: Response, next: Function) => {
     res.status(401).json({ error: 'Unauthorized' });
   }
 };
+
+// =============================================================================
+// HEALTH CHECKS (Kubernetes-compatible endpoints)
+// =============================================================================
+
+/**
+ * GET /api/health
+ * Comprehensive health check - returns detailed status
+ */
+router.get('/health', async (req: Request, res: Response) => {
+  try {
+    const health = await performHealthCheck();
+    const statusCode = health.status === 'healthy' ? 200 : health.status === 'degraded' ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (error) {
+    log.error('Health check failed', error);
+    res.status(503).json({
+      status: 'unhealthy',
+      error: error instanceof Error ? error.message : 'Health check failed',
+    });
+  }
+});
+
+/**
+ * GET /api/ready
+ * Readiness probe - is the service ready to accept traffic?
+ */
+router.get('/ready', async (req: Request, res: Response) => {
+  try {
+    const ready = await checkReadiness();
+    if (ready) {
+      res.status(200).json({ ready: true, message: 'Service is ready' });
+    } else {
+      res.status(503).json({ ready: false, message: 'Service is not ready' });
+    }
+  } catch (error) {
+    log.error('Readiness check failed', error);
+    res.status(503).json({ ready: false, error: 'Readiness check failed' });
+  }
+});
+
+/**
+ * GET /api/live
+ * Liveness probe - is the service alive?
+ */
+router.get('/live', (req: Request, res: Response) => {
+  const alive = checkLiveness();
+  res.status(200).json({ alive, message: 'Service is alive' });
+});
 
 // =============================================================================
 // АНАЛИТИКА И МЕТРИКИ
@@ -56,10 +142,10 @@ router.get('/metrics/overview', authenticate, async (req: Request, res: Response
 
     res.json({
       by_amount: result.rows,
-      total: totalResult.rows[0]
+      total: totalResult.rows[0],
     });
   } catch (error) {
-    console.error('Error fetching overview:', error);
+    log.error('Error fetching overview:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -97,7 +183,7 @@ router.get('/metrics/churn-history', authenticate, async (req: Request, res: Res
     const result = await db.query(query, params);
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching churn history:', error);
+    log.error('Error fetching churn history:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -164,10 +250,10 @@ router.get('/metrics/subscribers', authenticate, async (req: Request, res: Respo
       subscribers: result.rows,
       total: Number(countResult.rows[0].total),
       limit: Number(limit),
-      offset: Number(offset)
+      offset: Number(offset),
     });
   } catch (error) {
-    console.error('Error fetching subscribers:', error);
+    log.error('Error fetching subscribers:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -198,7 +284,7 @@ router.get('/metrics/revenue', authenticate, async (req: Request, res: Response)
     const result = await db.query(query, [startDate]);
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching revenue:', error);
+    log.error('Error fetching revenue:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -228,7 +314,7 @@ router.get('/groups', authenticate, async (req: Request, res: Response) => {
     const result = await db.query(query);
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching groups:', error);
+    log.error('Error fetching groups:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -237,7 +323,7 @@ router.get('/groups', authenticate, async (req: Request, res: Response) => {
  * POST /api/groups
  * Добавить новую группу
  */
-router.post('/groups', authenticate, async (req: Request, res: Response) => {
+router.post('/groups', strictLimiter, authenticate, async (req: Request, res: Response) => {
   try {
     const { chat_id, is_permanent = false, access_window_hours = 24 } = req.body;
 
@@ -259,12 +345,12 @@ router.post('/groups', authenticate, async (req: Request, res: Response) => {
       chat_id,
       'Unknown Group',
       is_permanent,
-      access_window_hours
+      access_window_hours,
     ]);
 
     return res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error adding group:', error);
+    log.error('Error adding group:', error);
     return res.status(500).json({ error: 'Failed to add group' });
   }
 });
@@ -273,29 +359,34 @@ router.post('/groups', authenticate, async (req: Request, res: Response) => {
  * DELETE /api/groups/:chatId
  * Удалить группу
  */
-router.delete('/groups/:chatId', authenticate, async (req: Request, res: Response) => {
-  try {
-    const { chatId } = req.params;
+router.delete(
+  '/groups/:chatId',
+  strictLimiter,
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const { chatId } = req.params;
 
-    const query = `
+      const query = `
       UPDATE managed_groups
       SET is_enabled = FALSE
       WHERE chat_id = $1
       RETURNING *
     `;
 
-    const result = await db.query(query, [chatId]);
+      const result = await db.query(query, [chatId]);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Group not found' });
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+
+      return res.json({ success: true, group: result.rows[0] });
+    } catch (error) {
+      log.error('Error deleting group:', error);
+      return res.status(500).json({ error: 'Failed to delete group' });
     }
-
-    return res.json({ success: true, group: result.rows[0] });
-  } catch (error) {
-    console.error('Error deleting group:', error);
-    return res.status(500).json({ error: 'Failed to delete group' });
   }
-});
+);
 
 // =============================================================================
 // УПРАВЛЕНИЕ БОТОМ
@@ -311,11 +402,11 @@ router.get('/bot/status', authenticate, async (req: Request, res: Response) => {
       bot: {
         status: 'running',
         uptime: process.uptime(),
-        test_mode: process.env.TEST_MODE === 'true'
-      }
+        test_mode: process.env.TEST_MODE === 'true',
+      },
     });
   } catch (error) {
-    console.error('Error fetching bot status:', error);
+    log.error('Error fetching bot status:', error);
     return res.status(500).json({ error: 'Failed to fetch bot status' });
   }
 });
@@ -324,17 +415,17 @@ router.get('/bot/status', authenticate, async (req: Request, res: Response) => {
  * POST /api/bot/sync
  * Запустить синхронизацию
  */
-router.post('/bot/sync', authenticate, async (req: Request, res: Response) => {
+router.post('/bot/sync', strictLimiter, authenticate, async (req: Request, res: Response) => {
   try {
     const { type = 'basic' } = req.body;
 
     // Note: This endpoint is a stub. Use the bot commands directly for sync operations.
     return res.json({
       message: 'Sync feature not implemented in API. Use bot commands: /sync or /fullsync',
-      type
+      type,
     });
   } catch (error) {
-    console.error('Error running sync:', error);
+    log.error('Error running sync:', error);
     return res.status(500).json({ error: 'Sync failed' });
   }
 });
@@ -343,22 +434,27 @@ router.post('/bot/sync', authenticate, async (req: Request, res: Response) => {
  * POST /api/import/tribute-export
  * Импортировать данные из экспорта Telegram
  */
-router.post('/import/tribute-export', authenticate, async (req: Request, res: Response) => {
-  try {
-    const { file_path } = req.body;
+router.post(
+  '/import/tribute-export',
+  strictLimiter,
+  authenticate,
+  async (req: Request, res: Response) => {
+    try {
+      const { file_path } = req.body;
 
-    if (!file_path) {
-      return res.status(400).json({ error: 'file_path is required' });
+      if (!file_path) {
+        return res.status(400).json({ error: 'file_path is required' });
+      }
+
+      await tributeService.importFromTelegramExport(file_path);
+
+      return res.json({ message: 'Import completed successfully' });
+    } catch (error) {
+      log.error('Error importing data:', error);
+      return res.status(500).json({ error: 'Import failed' });
     }
-
-    await tributeService.importFromTelegramExport(file_path);
-
-    return res.json({ message: 'Import completed successfully' });
-  } catch (error) {
-    console.error('Error importing data:', error);
-    return res.status(500).json({ error: 'Import failed' });
   }
-});
+);
 
 // =============================================================================
 // WEBHOOK для Tribute
@@ -374,7 +470,7 @@ router.post('/webhooks/tribute', async (req: Request, res: Response) => {
     await tributeService.handleWebhookEvent(event);
     res.json({ success: true });
   } catch (error) {
-    console.error('Error handling webhook:', error);
+    log.error('Error handling webhook:', error);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
@@ -394,10 +490,16 @@ export function startDashboardServer(port: number = 3000) {
   // CORS для разработки
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, X-API-Key');
+    res.header(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept, X-API-Key'
+    );
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     next();
   });
+
+  // Apply rate limiting to all API routes
+  app.use('/api', limiter);
 
   // API routes
   app.use('/api', dashboardAPI);
@@ -406,14 +508,20 @@ export function startDashboardServer(port: number = 3000) {
   app.use(express.static(path.join(__dirname, '../../dashboard/dist')));
 
   // Все остальные запросы отправляем на index.html (для SPA)
-  app.get('*', (req, res) => {
+  // Note: Express 5 doesn't support * as a route, using regex instead
+  app.get(/^\/(?!api).*/, (req, res) => {
     res.sendFile(path.join(__dirname, '../../dashboard/dist/index.html'));
   });
 
+  // Error handler middleware (must be last)
+  app.use(errorHandler);
+
   app.listen(port, () => {
-    console.log(`\n🚀 Dashboard server running on http://localhost:${port}`);
-    console.log(`📊 API endpoints: http://localhost:${port}/api`);
-    console.log(`🔑 API Key: ${process.env.DASHBOARD_API_KEY || 'montana-secret-key-2026'}\n`);
+    log.info(`\n🚀 Dashboard server running on http://localhost:${port}`);
+    log.info(`📊 API endpoints: http://localhost:${port}/api`);
+    log.info(`🔑 API Key: ${process.env.DASHBOARD_API_KEY || 'montana-secret-key-2026'}`);
+    log.info(`✅ Health checks: /api/health, /api/ready, /api/live`);
+    log.info(`🛡️  Rate limiting: 100 requests per 15 minutes\n`);
   });
 
   return app;

@@ -44,9 +44,8 @@ if (config.logging.format === 'pretty') {
       format: winston.format.combine(
         winston.format.colorize({ all: true }),
         winston.format.printf(
-          (info) => `${info.timestamp} ${info.level}: ${info.message}${
-            info.stack ? '\n' + info.stack : ''
-          }`
+          (info) =>
+            `${info.timestamp} ${info.level}: ${info.message}${info.stack ? `\n${info.stack}` : ''}`
         )
       ),
     })

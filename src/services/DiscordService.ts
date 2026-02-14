@@ -1,4 +1,5 @@
-import { Client, GatewayIntentBits, Guild, GuildMember, Invite } from 'discord.js';
+import { Client, GatewayIntentBits, Guild, GuildMember, Invite, VoiceState } from 'discord.js';
+import TelegramBot from 'node-telegram-bot-api';
 import { DiscordRepository } from '../repositories/DiscordRepository';
 import { DiscordPendingInviteRepository } from '../repositories/DiscordPendingInviteRepository';
 import { UserRepository } from '../repositories/UserRepository';
@@ -12,28 +13,41 @@ export class DiscordService {
   private pendingInviteRepo: DiscordPendingInviteRepository;
   private userRepo: UserRepository;
   private isConnected: boolean = false;
+  private bot: TelegramBot | null = null;
+  private lastVoiceNotification: number = 0;
+  private lastMontanaNotification: number = 0;
+  private voiceChannelCache: Map<string, number> = new Map();
 
-  constructor() {
+  constructor(bot?: TelegramBot) {
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildInvites,
+        GatewayIntentBits.GuildVoiceStates, // Добавлен для отслеживания voice
       ],
     });
 
     this.discordRepo = new DiscordRepository();
     this.pendingInviteRepo = new DiscordPendingInviteRepository();
     this.userRepo = new UserRepository();
+    this.bot = bot || null;
 
     this.setupEventHandlers();
+  }
+
+  /**
+   * Set Telegram bot instance
+   */
+  setTelegramBot(bot: TelegramBot): void {
+    this.bot = bot;
   }
 
   /**
    * Setup Discord bot event handlers
    */
   private setupEventHandlers(): void {
-    this.client.on('ready', () => {
+    this.client.on('clientReady', () => {
       log.info('Discord bot connected', { tag: this.client.user?.tag });
       this.isConnected = true;
     });
@@ -56,6 +70,133 @@ export class DiscordService {
     this.client.on('inviteCreate', async (invite) => {
       log.info('Discord invite created', { code: invite.code });
     });
+
+    // Track voice state changes
+    this.client.on('voiceStateUpdate', async (oldState, newState) => {
+      await this.handleVoiceStateUpdate(oldState, newState);
+    });
+  }
+
+  /**
+   * Handle voice state updates
+   */
+  private async handleVoiceStateUpdate(oldState: VoiceState, newState: VoiceState): Promise<void> {
+    try {
+      if (!this.bot) {
+        return; // No Telegram bot configured
+      }
+
+      const guildId = config.discord.guildId;
+      if (newState.guild.id !== guildId) {
+        return; // Not our guild
+      }
+
+      // Check if someone joined a voice channel
+      if (!oldState.channel && newState.channel) {
+        const member = newState.member;
+        if (!member) return;
+
+        // Check if Montana (honeymontana) joined voice
+        if (member.user.username.toLowerCase() === 'honeymontana') {
+          await this.notifyMontanaJoinedVoice();
+        }
+
+        // Count people in all voice channels
+        await this.checkVoiceChannelCount();
+      }
+
+      // Check if someone left a voice channel
+      if (oldState.channel && !newState.channel) {
+        // Update voice channel count
+        await this.checkVoiceChannelCount();
+      }
+
+      // Check if someone moved between channels
+      if (oldState.channel && newState.channel && oldState.channel.id !== newState.channel.id) {
+        await this.checkVoiceChannelCount();
+      }
+    } catch (error) {
+      log.error('Failed to handle voice state update', error);
+    }
+  }
+
+  /**
+   * Notify in Telegram when Montana joins voice
+   */
+  private async notifyMontanaJoinedVoice(): Promise<void> {
+    try {
+      if (!this.bot) return;
+
+      // Debounce: не спамить если недавно отправляли
+      const now = Date.now();
+      if (now - this.lastMontanaNotification < 60000) {
+        // 1 минута cooldown
+        return;
+      }
+
+      this.lastMontanaNotification = now;
+
+      const message =
+        '🎙️ Montana подключился в войс [Discord](https://t.me/montana_helper_bot?start=discord), намечается что-то интересное!';
+
+      await this.bot.sendMessage(config.telegram.mainGroupId, message, {
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true,
+      });
+
+      log.info('Sent Montana voice join notification to Telegram');
+    } catch (error) {
+      log.error('Failed to send Montana voice notification', error);
+    }
+  }
+
+  /**
+   * Check voice channel count and notify if > 5 people
+   */
+  private async checkVoiceChannelCount(): Promise<void> {
+    try {
+      if (!this.bot) return;
+
+      const guild = await this.getGuild(config.discord.guildId);
+      if (!guild) return;
+
+      // Count total people in all voice channels
+      let totalPeople = 0;
+      for (const [, channel] of guild.channels.cache) {
+        if (channel.isVoiceBased()) {
+          const voiceChannel = channel as any;
+          totalPeople += voiceChannel.members?.size || 0;
+        }
+      }
+
+      // Store in cache
+      const cacheKey = 'total_voice';
+      const lastCount = this.voiceChannelCache.get(cacheKey) || 0;
+      this.voiceChannelCache.set(cacheKey, totalPeople);
+
+      // Notify if crossed threshold (5+ people) and wasn't already above threshold
+      if (totalPeople >= 5 && lastCount < 5) {
+        const now = Date.now();
+
+        // Debounce: не спамить если недавно отправляли (10 минут cooldown)
+        if (now - this.lastVoiceNotification < 600000) {
+          return;
+        }
+
+        this.lastVoiceNotification = now;
+
+        const message = `🎉 В войсе [Discord](https://t.me/montana_helper_bot?start=discord) собралось уже ${totalPeople} человек, намечается что-то интересное!`;
+
+        await this.bot.sendMessage(config.telegram.mainGroupId, message, {
+          parse_mode: 'Markdown',
+          disable_web_page_preview: true,
+        });
+
+        log.info('Sent voice count notification to Telegram', { count: totalPeople });
+      }
+    } catch (error) {
+      log.error('Failed to check voice channel count', error);
+    }
   }
 
   /**
@@ -291,6 +432,12 @@ export class DiscordService {
    */
   async createOneTimeInvite(telegramId: number): Promise<string | null> {
     try {
+      // Check if Discord bot is connected
+      if (!this.isConnected) {
+        log.error('Discord bot not connected, cannot create invite', { telegramId });
+        return null;
+      }
+
       const guildId = config.discord.guildId;
       const guild = await this.getGuild(guildId);
 
@@ -301,9 +448,7 @@ export class DiscordService {
 
       // Get first available text channel for invite creation
       const channels = await guild.channels.fetch();
-      const textChannel = channels.find(
-        (channel) => channel?.isTextBased() && channel.type === 0
-      );
+      const textChannel = channels.find((channel) => channel?.isTextBased() && channel.type === 0);
 
       if (!textChannel) {
         log.error('No text channel found for invite creation');
@@ -343,6 +488,48 @@ export class DiscordService {
   }
 
   /**
+   * Create public invite link for announcements (valid for 24h, unlimited uses)
+   */
+  async createPublicInvite(): Promise<string | null> {
+    try {
+      const guildId = config.discord.guildId;
+      const guild = await this.getGuild(guildId);
+
+      if (!guild) {
+        log.error('Discord guild not found for public invite', { guildId });
+        return null;
+      }
+
+      // Get first available text channel for invite creation
+      const channels = await guild.channels.fetch();
+      const textChannel = channels.find((channel) => channel?.isTextBased() && channel.type === 0);
+
+      if (!textChannel) {
+        log.error('No text channel found for public invite creation');
+        return null;
+      }
+
+      // Create invite with no usage limit, valid for 24 hours
+      const invite = await (textChannel as any).createInvite({
+        maxUses: 0, // No limit
+        maxAge: 86400, // 24 hours in seconds
+        unique: false, // Re-use existing if available
+        reason: 'Public invite for voice activity notification',
+      });
+
+      log.info('Created public Discord invite', {
+        inviteCode: invite.code,
+        expiresAt: new Date(Date.now() + 86400 * 1000).toISOString(),
+      });
+
+      return invite.url;
+    } catch (error) {
+      log.error('Failed to create public Discord invite', { error });
+      return null;
+    }
+  }
+
+  /**
    * Handle member join event - auto-link if they used pending invite
    */
   private async handleMemberJoin(member: GuildMember): Promise<void> {
@@ -361,9 +548,7 @@ export class DiscordService {
             await this.pendingInviteRepo.markAsUsed(code);
 
             // Check if user already has a link
-            const existingLink = await this.discordRepo.findByTelegramId(
-              pendingInvite.telegram_id
-            );
+            const existingLink = await this.discordRepo.findByTelegramId(pendingInvite.telegram_id);
 
             if (existingLink) {
               // Deactivate old Discord account (remove role)
@@ -415,10 +600,7 @@ export class DiscordService {
       }
 
       // Remove role from old Discord account
-      const removed = await this.removeRole(
-        link.discord_id,
-        config.discord.memberRoleId
-      );
+      const removed = await this.removeRole(link.discord_id, config.discord.memberRoleId);
 
       if (removed) {
         log.info('Deactivated old Discord link', {

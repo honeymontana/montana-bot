@@ -48,11 +48,7 @@ describe('DiscordRepository', () => {
       expect(result).toEqual(mockLink);
       expect(mockQuery).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO discord_links'),
-        expect.arrayContaining([
-          telegramId,
-          discordId,
-          discordUsername,
-        ])
+        expect.arrayContaining([telegramId, discordId, discordUsername])
       );
     });
 
@@ -112,10 +108,9 @@ describe('DiscordRepository', () => {
       const result = await repository.findByTelegramId(telegramId);
 
       expect(result).toEqual(mockLink);
-      expect(mockQuery).toHaveBeenCalledWith(
-        'SELECT * FROM discord_links WHERE telegram_id = $1',
-        [telegramId]
-      );
+      expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM discord_links WHERE telegram_id = $1', [
+        telegramId,
+      ]);
     });
 
     it('should return null if link not found', async () => {
@@ -150,10 +145,9 @@ describe('DiscordRepository', () => {
       const result = await repository.findByDiscordId(discordId);
 
       expect(result).toEqual(mockLink);
-      expect(mockQuery).toHaveBeenCalledWith(
-        'SELECT * FROM discord_links WHERE discord_id = $1',
-        [discordId]
-      );
+      expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM discord_links WHERE discord_id = $1', [
+        discordId,
+      ]);
     });
 
     it('should return null if link not found', async () => {
@@ -195,10 +189,9 @@ describe('DiscordRepository', () => {
 
       expect(result).toEqual(mockLinks);
       expect(result).toHaveLength(2);
-      expect(mockQuery).toHaveBeenCalledWith(
-        'SELECT * FROM discord_links WHERE guild_id = $1',
-        [guildId]
-      );
+      expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM discord_links WHERE guild_id = $1', [
+        guildId,
+      ]);
     });
 
     it('should return empty array if no links found', async () => {
@@ -225,10 +218,9 @@ describe('DiscordRepository', () => {
       const result = await repository.deleteByTelegramId(telegramId);
 
       expect(result).toBe(true);
-      expect(mockQuery).toHaveBeenCalledWith(
-        'DELETE FROM discord_links WHERE telegram_id = $1',
-        [telegramId]
-      );
+      expect(mockQuery).toHaveBeenCalledWith('DELETE FROM discord_links WHERE telegram_id = $1', [
+        telegramId,
+      ]);
     });
 
     it('should return false if link not found', async () => {
@@ -255,10 +247,9 @@ describe('DiscordRepository', () => {
       const result = await repository.deleteByDiscordId(discordId);
 
       expect(result).toBe(true);
-      expect(mockQuery).toHaveBeenCalledWith(
-        'DELETE FROM discord_links WHERE discord_id = $1',
-        [discordId]
-      );
+      expect(mockQuery).toHaveBeenCalledWith('DELETE FROM discord_links WHERE discord_id = $1', [
+        discordId,
+      ]);
     });
 
     it('should return false if link not found', async () => {

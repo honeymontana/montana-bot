@@ -95,11 +95,7 @@ export class UserRepository {
     return result.rowCount > 0;
   }
 
-  async addToGroup(
-    userId: number,
-    groupId: string,
-    status: string = 'member'
-  ): Promise<void> {
+  async addToGroup(userId: number, groupId: string, status: string = 'member'): Promise<void> {
     await query(
       `INSERT INTO user_groups (user_id, group_id, status)
        VALUES ($1, $2, $3)
@@ -111,21 +107,17 @@ export class UserRepository {
   }
 
   async removeFromGroup(userId: number, groupId: string): Promise<boolean> {
-    const result = await query(
-      'DELETE FROM user_groups WHERE user_id = $1 AND group_id = $2',
-      [userId, groupId]
-    );
+    const result = await query('DELETE FROM user_groups WHERE user_id = $1 AND group_id = $2', [
+      userId,
+      groupId,
+    ]);
     if (result.rowCount > 0) {
       log.info('User removed from group', { userId, groupId });
     }
     return result.rowCount > 0;
   }
 
-  async updateGroupStatus(
-    userId: number,
-    groupId: string,
-    status: string
-  ): Promise<boolean> {
+  async updateGroupStatus(userId: number, groupId: string, status: string): Promise<boolean> {
     const result = await query(
       'UPDATE user_groups SET status = $3 WHERE user_id = $1 AND group_id = $2',
       [userId, groupId, status]
@@ -135,10 +127,7 @@ export class UserRepository {
 
   async removeFromAllGroups(userId: number, client?: PoolClient): Promise<number> {
     const queryFn = client ? client.query.bind(client) : query;
-    const result = await queryFn(
-      'DELETE FROM user_groups WHERE user_id = $1',
-      [userId]
-    );
+    const result = await queryFn('DELETE FROM user_groups WHERE user_id = $1', [userId]);
     if (result.rowCount > 0) {
       log.info('User removed from all groups', { userId, count: result.rowCount });
     }

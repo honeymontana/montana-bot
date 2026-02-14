@@ -182,3 +182,184 @@ docker-compose up -d
 # 3. Проверь логи:
 docker-compose logs -f bot
 ```
+
+---
+
+## PM2 Deployment (Recommended for Production)
+
+PM2 обеспечивает автоматический рестарт при падении, сбор логов, мониторинг и zero-downtime deploys.
+
+### Установка и настройка
+
+PM2 уже установлен как dev dependency. Все настройки в `ecosystem.config.js`.
+
+### Быстрый деплой
+
+```bash
+# Development
+./deploy.sh dev
+
+# Staging
+./deploy.sh staging
+
+# Production
+./deploy.sh prod
+```
+
+Скрипт `deploy.sh` автоматически:
+- Останавливает текущий инстанс
+- Устанавливает зависимости
+- Запускает миграции БД
+- Билдит TypeScript
+- Запускает тесты (для staging/prod)
+- Стартует бота через PM2
+
+### Ручное управление PM2
+
+```bash
+# Запуск
+npm run pm2:dev        # Разработка
+npm run pm2:staging    # Staging
+npm run pm2:prod       # Production
+
+# Остановка
+npm run pm2:stop:dev
+npm run pm2:stop:staging
+npm run pm2:stop:prod
+
+# Рестарт
+npm run pm2:restart:dev
+npm run pm2:restart:staging
+npm run pm2:restart:prod
+
+# Логи
+npm run pm2:logs:dev
+npm run pm2:logs:staging
+npm run pm2:logs:prod
+
+# Мониторинг
+npm run pm2:monit      # Real-time monitoring
+npm run pm2:status     # Status overview
+```
+
+### Где хранятся логи
+
+**PM2 логи (stdout/stderr):**
+- Development: `./logs/pm2-dev-out.log`, `./logs/pm2-dev-error.log`
+- Staging: `./logs/pm2-staging-out.log`, `./logs/pm2-staging-error.log`
+- Production: `./logs/pm2-prod-out.log`, `./logs/pm2-prod-error.log`
+
+**Winston логи (приложение):**
+- Все ошибки: `./logs/error.log`
+- Все логи: `./logs/combined.log`
+
+### Автоматический рестарт при падении
+
+PM2 настроен на:
+- Автоматический рестарт при крашах
+- Максимум 10 рестартов подряд
+- Минимальное время работы: 10 секунд
+- Рестарт при превышении памяти:
+  - Dev/Staging: 500MB
+  - Production: 1GB
+
+### Анализ логов после падения
+
+```bash
+# Последние ошибки из PM2
+npm run pm2:logs:prod | grep -i error
+
+# Последние ошибки из Winston
+tail -100 logs/error.log
+
+# Полные логи за последний час
+tail -1000 logs/combined.log
+
+# Проверка когда был последний рестарт
+npm run pm2:status
+# Смотри колонку "uptime" - если маленькое значение, был рестарт
+```
+
+### Production deployment workflow
+
+```bash
+# 1. Убедись что все изменения закоммичены
+git status
+
+# 2. Запуш на GitHub
+git add .
+git commit -m "Add PM2 deployment setup"
+git push
+
+# 3. На production сервере
+ssh user@server
+cd /path/to/montana-tg-bot
+
+# 4. Получи последние изменения
+git pull
+
+# 5. Задеплой
+./deploy.sh prod
+
+# 6. Проверь статус
+npm run pm2:status
+npm run pm2:logs:prod
+```
+
+### Troubleshooting
+
+**Бот не стартует:**
+```bash
+# Проверь PM2 логи
+npm run pm2:logs:prod
+
+# Проверь есть ли .env файл
+ls -la .env
+
+# Проверь что БД доступна
+npm run migration:run
+
+# Попробуй запустить напрямую
+npm run build
+node dist/index.js
+```
+
+**Бот падает сразу после старта:**
+```bash
+# Смотри логи ошибок
+cat logs/error.log
+cat logs/pm2-prod-error.log
+
+# Проверь переменные окружения
+grep BOT_TOKEN .env
+grep DB_HOST .env
+```
+
+**Слишком много рестартов:**
+```bash
+# Проверь количество рестартов
+npm run pm2:status
+# Смотри колонку "restart"
+
+# Если > 5 рестартов - смотри error.log
+cat logs/error.log | tail -200
+
+# Останови, исправь проблему, запусти снова
+npm run pm2:stop:prod
+# ... fix issue ...
+npm run pm2:prod
+```
+
+### Мониторинг в production
+
+```bash
+# Real-time CPU/Memory usage
+npm run pm2:monit
+
+# Проверка здоровья
+curl http://localhost:3002/health
+
+# Dashboard (если настроен)
+open http://localhost:3002
+```
+

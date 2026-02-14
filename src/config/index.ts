@@ -6,9 +6,7 @@ dotenv.config();
 
 // Define configuration schema
 const configSchema = Joi.object({
-  NODE_ENV: Joi.string()
-    .valid('development', 'production', 'test')
-    .default('development'),
+  NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
   BOT_TOKEN: Joi.string().required(),
   DB_HOST: Joi.string().default('localhost'),
   DB_PORT: Joi.number().default(5432),
@@ -17,9 +15,7 @@ const configSchema = Joi.object({
   DB_PASSWORD: Joi.string().required(),
   MAIN_GROUP_ID: Joi.string().required(),
   CHECK_INTERVAL_MINUTES: Joi.number().min(1).default(5),
-  LOG_LEVEL: Joi.string()
-    .valid('error', 'warn', 'info', 'debug')
-    .default('info'),
+  LOG_LEVEL: Joi.string().valid('error', 'warn', 'info', 'debug').default('info'),
   ADMIN_IDS: Joi.string().default(''),
   TEST_MODE: Joi.boolean().default(false),
   TELEGRAM_API_ID: Joi.number().optional().allow(''),
@@ -32,7 +28,9 @@ const configSchema = Joi.object({
   DISCORD_CLIENT_SECRET: Joi.string().optional().default(''),
   DISCORD_GUILD_ID: Joi.string().optional().default(''),
   DISCORD_MEMBER_ROLE_ID: Joi.string().optional().default(''),
-  DISCORD_REDIRECT_URI: Joi.string().optional().default('http://localhost:3000/auth/discord/callback'),
+  DISCORD_REDIRECT_URI: Joi.string()
+    .optional()
+    .default('http://localhost:3000/auth/discord/callback'),
   OAUTH_PORT: Joi.number().default(3000),
 });
 
@@ -47,8 +45,9 @@ if (error) {
 }
 
 // Debug: Log only in development (never log tokens in production)
+// Note: Using console.log here to avoid circular dependency with logger
 if (envVars.NODE_ENV === 'development') {
-  console.log('🔑 Bot token loaded (length:', (envVars.BOT_TOKEN as string).length, 'chars)');
+  console.log(`🔑 Bot token loaded (length: ${(envVars.BOT_TOKEN as string).length} chars)`);
 }
 
 export const config = {

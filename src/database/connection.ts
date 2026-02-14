@@ -54,9 +54,7 @@ export async function query(text: string, params?: any[]): Promise<any> {
 }
 
 // Transaction helper function
-export async function withTransaction<T>(
-  callback: (client: PoolClient) => Promise<T>
-): Promise<T> {
+export async function withTransaction<T>(callback: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

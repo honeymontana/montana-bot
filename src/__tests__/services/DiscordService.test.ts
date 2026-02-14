@@ -275,9 +275,7 @@ describe('DiscordService', () => {
     });
 
     it('should remove roles for users not in main group', async () => {
-      const mockLinks = [
-        { telegram_id: 123, discord_id: 'discord-1' },
-      ];
+      const mockLinks = [{ telegram_id: 123, discord_id: 'discord-1' }];
 
       mockDiscordRepo.findByGuildId.mockResolvedValue(mockLinks as any);
       mockUserRepo.isUserInGroup.mockResolvedValue(false);
@@ -339,10 +337,7 @@ describe('DiscordService', () => {
       const result = await discordService.deactivateOldLink(telegramId);
 
       expect(result).toBe(true);
-      expect((discordService as any).removeRole).toHaveBeenCalledWith(
-        discordId,
-        roleId
-      );
+      expect((discordService as any).removeRole).toHaveBeenCalledWith(discordId, roleId);
     });
 
     it('should return true if no link exists', async () => {
@@ -355,9 +350,7 @@ describe('DiscordService', () => {
     });
 
     it('should return false on error', async () => {
-      mockDiscordRepo.findByTelegramId.mockRejectedValue(
-        new Error('Database error')
-      );
+      mockDiscordRepo.findByTelegramId.mockRejectedValue(new Error('Database error'));
 
       const result = await discordService.deactivateOldLink(telegramId);
 
@@ -378,16 +371,12 @@ describe('DiscordService', () => {
         expires_at: new Date(Date.now() + 86400 * 1000),
       };
 
-      mockPendingInviteRepo.findActiveByTelegramId.mockResolvedValue(
-        mockInvite as any
-      );
+      mockPendingInviteRepo.findActiveByTelegramId.mockResolvedValue(mockInvite as any);
 
       const result = await discordService.getActivePendingInvite(telegramId);
 
       expect(result).toEqual(mockInvite);
-      expect(mockPendingInviteRepo.findActiveByTelegramId).toHaveBeenCalledWith(
-        telegramId
-      );
+      expect(mockPendingInviteRepo.findActiveByTelegramId).toHaveBeenCalledWith(telegramId);
     });
 
     it('should return null if no active invite', async () => {

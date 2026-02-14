@@ -44,10 +44,7 @@ describe('MembershipService', () => {
 
       const result = await membershipService.checkMainGroupMembership(userId);
 
-      expect(mockBot.getChatMember).toHaveBeenCalledWith(
-        config.telegram.mainGroupId,
-        userId
-      );
+      expect(mockBot.getChatMember).toHaveBeenCalledWith(config.telegram.mainGroupId, userId);
       expect(result.isInMainGroup).toBe(true);
       expect(result.user).toEqual(mockMember);
     });
