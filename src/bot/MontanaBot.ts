@@ -1394,15 +1394,39 @@ export class MontanaBot {
 
     // Привязать/перепривязать через invite ссылку
     if (param.toLowerCase() === 'привязать' || param.toLowerCase() === 'link') {
-      // Если аккаунт уже привязан - показать статус вместо перелинковки
+      // Если аккаунт уже привязан - показать статус с кнопками
       if (existingLink) {
-        await this.bot.sendMessage(
-          chatId,
-          `✅ Ваш аккаунт уже привязан!\n\n` +
-            `Discord: ${existingLink.discord_username || 'Не указано'}\n` +
-            `ID: ${existingLink.discord_id}\n\n` +
-            `💡 Для отвязки используйте команду /discord`
-        );
+        const { isInMainGroup } = await this.membershipService.checkMainGroupMembership(userId);
+
+        let statusMessage = `🎮 Discord статус\n\n`;
+        statusMessage += `✅ Привязан: ${existingLink.discord_username || 'Не указано'}\n`;
+        statusMessage += `🆔 Discord ID: ${existingLink.discord_id}\n`;
+        statusMessage += `🏷️ Montana: ${isInMainGroup ? '✅ Активно' : '❌ Не активно'}\n\n`;
+
+        if (isInMainGroup) {
+          statusMessage += `✨ У вас есть доступ к Montana Discord серверу!`;
+        } else {
+          statusMessage += `⚠️ Для доступа вступите в Montana Telegram группу.`;
+        }
+
+        await this.bot.sendMessage(chatId, statusMessage, {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: '🔄 Привязать другой Discord',
+                  callback_data: 'discord_relink',
+                },
+              ],
+              [
+                {
+                  text: '❌ Отвязать Discord',
+                  callback_data: 'discord_unlink',
+                },
+              ],
+            ],
+          },
+        });
         return;
       }
 
@@ -1583,6 +1607,14 @@ export class MontanaBot {
 
       if (data === 'discord_link') {
         // Привязать Discord
+        await this.handleDiscord(query.message as TelegramBot.Message, 'привязать');
+      } else if (data === 'discord_relink') {
+        // Перепривязать Discord (сначала отвязать старый)
+        const existingLink = await this.discordRepo.findByTelegramId(userId);
+        if (existingLink && this.discordService) {
+          await this.discordService.deactivateOldLink(userId);
+          await this.discordRepo.deleteByTelegramId(userId);
+        }
         await this.handleDiscord(query.message as TelegramBot.Message, 'привязать');
       } else if (data === 'discord_unlink') {
         // Отвязать Discord
