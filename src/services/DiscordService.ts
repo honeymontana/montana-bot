@@ -764,6 +764,96 @@ export class DiscordService {
   }
 
   /**
+   * Find guild member by pending invite (проактивная проверка)
+   */
+  async findMemberByPendingInvite(
+    pendingInvite: any
+  ): Promise<GuildMember | null> {
+    try {
+      const guild = await this.getGuild(config.discord.guildId);
+      if (!guild) {
+        log.error('Guild not found for proactive check');
+        return null;
+      }
+      const members = await guild.members.fetch();
+
+      // Ищем members которые присоединились после создания invite
+      const inviteCreatedAt = new Date(pendingInvite.created_at).getTime();
+
+      for (const [_, member] of members) {
+        const joinedAt = member.joinedAt?.getTime();
+        if (joinedAt && joinedAt >= inviteCreatedAt) {
+          // Нашли кандидата! Проверим что это не бот
+          if (!member.user.bot) {
+            log.info('Found potential member for pending invite', {
+              discordId: member.id,
+              username: member.user.username,
+              joinedAt: member.joinedAt,
+              inviteCreated: pendingInvite.created_at,
+            });
+            return member;
+          }
+        }
+      }
+
+      return null;
+    } catch (error) {
+      log.error('Failed to find member by pending invite', { error });
+      return null;
+    }
+  }
+
+  /**
+   * Link account manually (из проактивной проверки)
+   */
+  async linkAccountManually(
+    telegramId: number,
+    discordId: string,
+    discordUsername: string,
+    inviteCode: string
+  ): Promise<void> {
+    try {
+      // Mark invite as used
+      await this.pendingInviteRepo.markAsUsed(inviteCode);
+
+      // Check if user already has a link
+      const existingLink = await this.discordRepo.findByTelegramId(telegramId);
+
+      if (existingLink) {
+        // Deactivate old Discord account (remove role)
+        await this.removeRole(existingLink.discord_id, config.discord.memberRoleId);
+        log.info('Deactivated old Discord link', {
+          telegramId,
+          oldDiscordId: existingLink.discord_id,
+        });
+      }
+
+      // Create new link
+      await this.discordRepo.upsert({
+        telegram_id: telegramId,
+        discord_id: discordId,
+        discord_username: discordUsername,
+        discord_discriminator: '0',
+        guild_id: config.discord.guildId,
+        last_discord_change: new Date(),
+      });
+
+      // Add member role
+      await this.addRole(discordId, config.discord.memberRoleId);
+
+      log.info('Manually linked Discord account (proactive check)', {
+        telegramId,
+        discordId,
+        username: discordUsername,
+        inviteCode,
+      });
+    } catch (error) {
+      log.error('Failed to manually link account', { error });
+      throw error;
+    }
+  }
+
+  /**
    * Check if bot is connected
    */
   isReady(): boolean {

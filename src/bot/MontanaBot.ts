@@ -1281,7 +1281,37 @@ export class MontanaBot {
       return;
     }
 
-    const existingLink = await this.discordRepo.findByTelegramId(userId);
+    let existingLink = await this.discordRepo.findByTelegramId(userId);
+
+    // Проактивная проверка: если нет линка, но есть pending invite - проверить не залинковались ли уже
+    if (!existingLink) {
+      const activePendingInvite = await this.discordService.getActivePendingInvite(userId);
+
+      if (activePendingInvite) {
+        // Пробуем найти пользователя в Discord guild
+        const foundMember = await this.discordService.findMemberByPendingInvite(activePendingInvite);
+
+        if (foundMember) {
+          // Нашли! Линкуем автоматически
+          await this.discordService.linkAccountManually(
+            userId,
+            foundMember.id,
+            foundMember.user.username,
+            activePendingInvite.invite_code
+          );
+
+          // Обновляем existingLink для отображения
+          existingLink = await this.discordRepo.findByTelegramId(userId);
+
+          await this.bot.sendMessage(
+            chatId,
+            `✅ Аккаунт автоматически привязан!\n\n` +
+              `Discord: ${foundMember.user.username}\n` +
+              `ID: ${foundMember.id}`
+          );
+        }
+      }
+    }
 
     // Без параметров - показать статус
     if (!param) {
