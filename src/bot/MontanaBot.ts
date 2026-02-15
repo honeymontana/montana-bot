@@ -1284,7 +1284,7 @@ export class MontanaBot {
     let existingLink = await this.discordRepo.findByTelegramId(userId);
 
     // Проактивная проверка: если нет линка, но есть pending invite - проверить не залинковались ли уже
-    if (!existingLink) {
+    if (!existingLink && !param) {
       const activePendingInvite = await this.discordService.getActivePendingInvite(userId);
 
       if (activePendingInvite) {
@@ -1302,13 +1302,6 @@ export class MontanaBot {
 
           // Обновляем existingLink для отображения
           existingLink = await this.discordRepo.findByTelegramId(userId);
-
-          await this.bot.sendMessage(
-            chatId,
-            `✅ Аккаунт автоматически привязан!\n\n` +
-              `Discord: ${foundMember.user.username}\n` +
-              `ID: ${foundMember.id}`
-          );
         }
       }
     }
@@ -1401,6 +1394,18 @@ export class MontanaBot {
 
     // Привязать/перепривязать через invite ссылку
     if (param.toLowerCase() === 'привязать' || param.toLowerCase() === 'link') {
+      // Если аккаунт уже привязан - показать статус вместо перелинковки
+      if (existingLink) {
+        await this.bot.sendMessage(
+          chatId,
+          `✅ Ваш аккаунт уже привязан!\n\n` +
+            `Discord: ${existingLink.discord_username || 'Не указано'}\n` +
+            `ID: ${existingLink.discord_id}\n\n` +
+            `💡 Для отвязки используйте команду /discord`
+        );
+        return;
+      }
+
       // Check if user is in main Montana group
       const { isInMainGroup } = await this.membershipService.checkMainGroupMembership(userId);
 
