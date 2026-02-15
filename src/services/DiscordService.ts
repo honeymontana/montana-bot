@@ -616,10 +616,10 @@ export class DiscordService {
       if (!usedInviteCode) {
         log.info('Invite not found in current list (likely one-time invite), using fallback');
 
-        // Get all unused pending invites from last 10 minutes for this guild
+        // Get all unused pending invites from last 24 hours (same as invite expiration)
         const recentPendingInvites = await this.pendingInviteRepo.getRecentUnused(
           member.guild.id,
-          10
+          1440 // 24 hours in minutes
         );
 
         log.info('Recent unused pending invites found', {
