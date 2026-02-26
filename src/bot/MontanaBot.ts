@@ -1299,7 +1299,8 @@ export class MontanaBot {
 
         await this.bot.sendMessage(
           chatId,
-          `Подключитесь на сервер Discord:\n${inviteUrl}\n\nЗатем введите команду:\n/discord ваш_ник`
+          `Подключитесь на сервер Discord:\n${inviteUrl}\n\nЗатем введите команду:\n\`/discord ваш_ник\``,
+          { parse_mode: 'Markdown' }
         );
         return;
       }
