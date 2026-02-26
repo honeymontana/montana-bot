@@ -351,11 +351,33 @@ export class DiscordService {
 
       for (const link of links) {
         try {
-          // Check if user is still in Montana main group
-          const isInMainGroup = await this.userRepo.isUserInGroup(
-            link.telegram_id,
-            config.telegram.mainGroupId
-          );
+          // Check if user is still in Montana main group using REAL Telegram API check
+          let isInMainGroup = false;
+          if (this.bot) {
+            try {
+              const member = await this.bot.getChatMember(
+                config.telegram.mainGroupId,
+                link.telegram_id
+              );
+              isInMainGroup = ['member', 'administrator', 'creator'].includes(member.status);
+            } catch (apiError) {
+              // If Telegram API fails, fallback to DB check (but log warning)
+              log.warn('Telegram API check failed, falling back to DB', {
+                telegramId: link.telegram_id,
+                error: apiError,
+              });
+              isInMainGroup = await this.userRepo.isUserInGroup(
+                link.telegram_id,
+                config.telegram.mainGroupId
+              );
+            }
+          } else {
+            // No Telegram bot available, use DB check
+            isInMainGroup = await this.userRepo.isUserInGroup(
+              link.telegram_id,
+              config.telegram.mainGroupId
+            );
+          }
 
           const hasRole = await this.hasRole(link.discord_id, roleId);
 
@@ -364,11 +386,20 @@ export class DiscordService {
             const added = await this.addRole(link.discord_id, roleId);
             if (added) {
               result.added++;
+              log.info('Added Discord role during sync', {
+                telegramId: link.telegram_id,
+                discordId: link.discord_id,
+              });
             } else {
               result.errors++;
             }
           } else if (!isInMainGroup && hasRole) {
-            // Remove role
+            // Remove role - but ONLY if we're confident user is not in main group
+            log.warn('User not in main group, removing Discord role', {
+              telegramId: link.telegram_id,
+              discordId: link.discord_id,
+              discordUsername: link.discord_username,
+            });
             const removed = await this.removeRole(link.discord_id, roleId);
             if (removed) {
               result.removed++;
