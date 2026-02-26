@@ -1295,16 +1295,11 @@ export class MontanaBot {
     // Без параметров - показать инструкцию и invite ссылку
     if (!param) {
       if (!existingLink) {
-        const inviteUrl = config.discord.inviteUrl || 'https://discord.gg/YOUR_INVITE';
+        const inviteUrl = config.discord.inviteUrl || 'https://discord.gg/sjWNCKJJ36';
 
         await this.bot.sendMessage(
           chatId,
-          `🎮 Discord интеграция Montana\n\n` +
-            `1️⃣ Вступите на наш Discord сервер:\n${inviteUrl}\n\n` +
-            `2️⃣ Напишите команду с вашим Discord ником:\n` +
-            `/discord <ваш_ник>\n\n` +
-            `💡 Пример: /discord john_doe\n\n` +
-            `⚠️ Роль Montana участника выдаётся автоматически при наличии активной подписки в Telegram группе.`
+          `Подключитесь на сервер Discord:\n${inviteUrl}\n\nЗатем введите команду:\n/discord ваш_ник`
         );
         return;
       }
@@ -1315,20 +1310,20 @@ export class MontanaBot {
 
       await this.bot.sendMessage(
         chatId,
-        `🎮 Discord статус\n\n` +
-          `✅ Привязан: ${existingLink.discord_username}\n` +
-          `🆔 Discord ID: ${existingLink.discord_id}\n` +
-          `🏷️ Montana роль: ${hasRole ? '✅ Активна' : '❌ Не активна'}\n\n` +
+        `Discord статус\n\n` +
+          `Привязан: ${existingLink.discord_username}\n` +
+          `Discord ID: ${existingLink.discord_id}\n` +
+          `Montana роль: ${hasRole ? 'Активна' : 'Не активна'}\n\n` +
           `${
             hasRole
-              ? '✨ У вас есть роль Montana на Discord!'
-              : '⚠️ Для получения роли вступите в Montana Telegram группу.'
+              ? 'У вас есть роль Montana на Discord'
+              : 'Для получения роли вступите в Montana Telegram группу'
           }`,
         {
           reply_markup: {
             inline_keyboard: [
-              [{ text: '🔄 Привязать другой Discord', callback_data: 'discord_relink' }],
-              [{ text: '❌ Отвязать Discord', callback_data: 'discord_unlink' }],
+              [{ text: 'Привязать другой Discord', callback_data: 'discord_relink' }],
+              [{ text: 'Отвязать Discord', callback_data: 'discord_unlink' }],
             ],
           },
         }
@@ -1339,7 +1334,7 @@ export class MontanaBot {
     // Отвязать аккаунт
     if (param.toLowerCase() === 'отвязать' || param.toLowerCase() === 'unlink') {
       if (!existingLink) {
-        await this.bot.sendMessage(chatId, '❌ У вас нет привязанного Discord аккаунта');
+        await this.bot.sendMessage(chatId, 'У вас нет привязанного Discord аккаунта');
         return;
       }
 
@@ -1353,8 +1348,7 @@ export class MontanaBot {
 
       await this.bot.sendMessage(
         chatId,
-        `✅ Discord аккаунт отвязан\n\n` +
-          `Вы можете привязать другой аккаунт командой:\n/discord <ваш_discord_ник>`
+        `Discord аккаунт отвязан\n\nВы можете привязать другой аккаунт командой:\n/discord ваш_ник`
       );
 
       log.info('Discord account unlinked', { telegramId: userId, discordId: existingLink.discord_id });
@@ -1367,9 +1361,7 @@ export class MontanaBot {
     if (discordUsername.length < 2 || discordUsername.length > 32) {
       await this.bot.sendMessage(
         chatId,
-        `❌ Некорректный Discord ник\n\n` +
-          `Ник должен быть от 2 до 32 символов.\n` +
-          `Пример: /discord john_doe`
+        `Некорректный Discord ник\n\nНик должен быть от 2 до 32 символов`
       );
       return;
     }
@@ -1379,9 +1371,7 @@ export class MontanaBot {
     if (existingDiscordLink && existingDiscordLink.telegram_id !== userId) {
       await this.bot.sendMessage(
         chatId,
-        `❌ Этот Discord аккаунт уже привязан к другому Telegram\n\n` +
-          `Discord ник: ${discordUsername}\n` +
-          `Один Discord = один Telegram`
+        `Этот Discord аккаунт уже привязан к другому Telegram\n\nОдин Discord = один Telegram`
       );
       return;
     }
@@ -1392,12 +1382,7 @@ export class MontanaBot {
     if (!member) {
       await this.bot.sendMessage(
         chatId,
-        `❌ Пользователь не найден на Discord сервере\n\n` +
-          `Discord ник: ${discordUsername}\n\n` +
-          `Убедитесь что:\n` +
-          `1️⃣ Вы вступили на наш сервер\n` +
-          `2️⃣ Ник написан правильно (без @, без #)\n` +
-          `3️⃣ Используете ваш Discord username, а не отображаемое имя`
+        `Пользователь не найден на Discord сервере\n\nУбедитесь что:\n- Вы вступили на сервер\n- Ник написан правильно (без @ и #)\n- Используете Discord username, а не отображаемое имя`
       );
       return;
     }
@@ -1432,13 +1417,13 @@ export class MontanaBot {
 
     await this.bot.sendMessage(
       chatId,
-      `✅ Discord аккаунт успешно привязан!\n\n` +
+      `Discord аккаунт успешно привязан\n\n` +
         `Discord: ${member.user.username}\n` +
         `Telegram ID: ${userId}\n\n` +
         `${
           isInMainGroup
-            ? '🎉 Роль Montana автоматически назначена!'
-            : '⚠️ Для получения роли Montana вступите в Telegram группу.'
+            ? 'Роль Montana автоматически назначена'
+            : 'Для получения роли Montana вступите в Telegram группу'
         }`
     );
 
