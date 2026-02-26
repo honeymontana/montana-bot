@@ -1366,6 +1366,16 @@ export class MontanaBot {
       return;
     }
 
+    // Проверка: пользователь должен быть в основной группе Montana
+    const { isInMainGroup } = await this.membershipService.checkMainGroupMembership(userId);
+    if (!isInMainGroup) {
+      await this.bot.sendMessage(
+        chatId,
+        `Для привязки Discord необходимо быть участником Montana Telegram группы\n\nВступите в группу и попробуйте снова`
+      );
+      return;
+    }
+
     // Проверка: этот Discord уже привязан к другому Telegram?
     const existingDiscordLink = await this.discordRepo.findByDiscordUsername(discordUsername);
     if (existingDiscordLink && existingDiscordLink.telegram_id !== userId) {
@@ -1408,30 +1418,22 @@ export class MontanaBot {
       last_discord_change: new Date(),
     });
 
-    // Проверить подписку Montana и выдать роль если активна
-    const { isInMainGroup } = await this.membershipService.checkMainGroupMembership(userId);
-
-    if (isInMainGroup) {
-      await this.discordService.addRole(member.id, config.discord.memberRoleId);
-    }
+    // Выдать роль (пользователь уже проверен как член Montana группы)
+    await this.discordService.addRole(member.id, config.discord.memberRoleId);
 
     await this.bot.sendMessage(
       chatId,
       `Discord аккаунт успешно привязан\n\n` +
         `Discord: ${member.user.username}\n` +
         `Telegram ID: ${userId}\n\n` +
-        `${
-          isInMainGroup
-            ? 'Роль с доступом автоматически назначена'
-            : 'Для роли с доступом вступите в Telegram группу'
-        }`
+        `Роль с доступом автоматически назначена`
     );
 
     log.info('Discord account linked by username', {
       telegramId: userId,
       discordId: member.id,
       discordUsername: member.user.username,
-      roleAdded: isInMainGroup,
+      roleAdded: true,
     });
   }
 
