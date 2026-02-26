@@ -501,31 +501,61 @@ export class DiscordService {
         return null;
       }
 
-      // Fetch members with query parameter to search by username
-      // This avoids rate limits from fetching all members
-      const fetchedMembers = await guild.members.fetch({ query: username, limit: 10 });
+      log.info('🔍 DEBUG: Starting search for Discord member', { username });
 
-      log.info('🔍 DEBUG: Searching for Discord member', {
-        searchUsername: username,
-        fetchedCount: fetchedMembers.size,
-        fetchedUsernames: fetchedMembers.map((m) => m.user.username),
-      });
+      // Approach 1: Try query parameter search first
+      try {
+        const queryResult = await guild.members.fetch({ query: username, limit: 10 });
 
-      // Search by username (case-insensitive exact match)
-      const member = fetchedMembers.find(
-        (m) => m.user.username.toLowerCase() === username.toLowerCase()
-      );
-
-      if (member) {
-        log.info('Found Discord member by username', {
-          username,
-          discordId: member.id,
-          foundUsername: member.user.username,
+        log.info('🔍 DEBUG: Query search result', {
+          searchUsername: username,
+          fetchedCount: queryResult.size,
+          fetchedUsernames: queryResult.map((m) => m.user.username),
         });
-        return member;
+
+        const exactMatch = queryResult.find(
+          (m) => m.user.username.toLowerCase() === username.toLowerCase()
+        );
+
+        if (exactMatch) {
+          log.info('✅ Found member via query search', {
+            username,
+            discordId: exactMatch.id,
+            foundUsername: exactMatch.user.username,
+          });
+          return exactMatch;
+        }
+      } catch (queryError) {
+        log.warn('Query search failed, trying alternative method', { error: queryError });
       }
 
-      log.info('Discord member not found by username', { username, fetchedCount: fetchedMembers.size });
+      // Approach 2: Fetch limited members and search manually
+      try {
+        log.info('🔍 DEBUG: Trying manual search with limit 100');
+        const allMembers = await guild.members.fetch({ limit: 100 });
+
+        log.info('🔍 DEBUG: Manual search fetched members', {
+          totalFetched: allMembers.size,
+          sampleUsernames: allMembers.map((m) => m.user.username).slice(0, 10),
+        });
+
+        const manualMatch = allMembers.find(
+          (m) => m.user.username.toLowerCase() === username.toLowerCase()
+        );
+
+        if (manualMatch) {
+          log.info('✅ Found member via manual search', {
+            username,
+            discordId: manualMatch.id,
+            foundUsername: manualMatch.user.username,
+          });
+          return manualMatch;
+        }
+      } catch (manualError) {
+        log.error('Manual search also failed', { error: manualError });
+      }
+
+      log.warn('❌ Member not found after trying all methods', { username });
       return null;
     } catch (error) {
       log.error('Error finding member by username', { username, error });
