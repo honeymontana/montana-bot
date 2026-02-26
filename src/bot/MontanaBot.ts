@@ -1313,11 +1313,11 @@ export class MontanaBot {
         `Discord статус\n\n` +
           `Привязан: ${existingLink.discord_username}\n` +
           `Discord ID: ${existingLink.discord_id}\n` +
-          `Montana роль: ${hasRole ? 'Активна' : 'Не активна'}\n\n` +
+          `Роль с доступом: ${hasRole ? 'Активна' : 'Не активна'}\n\n` +
           `${
             hasRole
-              ? 'У вас есть роль Montana на Discord'
-              : 'Для получения роли вступите в Montana Telegram группу'
+              ? 'У вас есть роль с доступом'
+              : 'Для роли с доступом вступите в Montana Telegram группу'
           }`,
         {
           reply_markup: {
@@ -1422,8 +1422,8 @@ export class MontanaBot {
         `Telegram ID: ${userId}\n\n` +
         `${
           isInMainGroup
-            ? 'Роль Montana автоматически назначена'
-            : 'Для получения роли Montana вступите в Telegram группу'
+            ? 'Роль с доступом автоматически назначена'
+            : 'Для роли с доступом вступите в Telegram группу'
         }`
     );
 
