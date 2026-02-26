@@ -264,19 +264,27 @@ export class MontanaBot {
       }
     }
 
-    const welcomeMessage = `
-Добро пожаловать в Montana Helper Bot! 🤖
+    // Check if user has access to Montana
+    const { isInMainGroup } = await this.membershipService.checkMainGroupMembership(userId);
+
+    let welcomeMessage = `
+Добро пожаловать в Montana Helper Bot
 
 Я автоматически управляю доступом к чатам на основе вашей подписки в группе Montana.
 
 Доступные команды:
-/status - Проверить ваш статус подписки${config.discord.enabled ? '\n/linkdiscord - Привязать Discord аккаунт' : ''}
+/status - Проверить ваш статус подписки${config.discord.enabled ? '\n/discord - Подключить Discord' : ''}
 
 Как это работает:
 1. Состоите в Montana - автоматически одобряется заявка на вступление в чат
 2. Выходите из Montana - автоматически удаляетесь из всех чатов
 3. Нет подписки - заявки отклоняются
     `;
+
+    // Add subscription link if user doesn't have access
+    if (!isInMainGroup) {
+      welcomeMessage += `\n\nКупить подписку: https://t.me/tribute/app?startapp=sjem`;
+    }
 
     await this.bot.sendMessage(chatId, welcomeMessage.trim());
   }
