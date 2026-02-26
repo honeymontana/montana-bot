@@ -1312,7 +1312,6 @@ export class MontanaBot {
         chatId,
         `Discord статус\n\n` +
           `Привязан: ${existingLink.discord_username}\n` +
-          `Discord ID: ${existingLink.discord_id}\n` +
           `Роль с доступом: ${hasRole ? 'Активна' : 'Не активна'}\n\n` +
           `${
             hasRole
@@ -1424,8 +1423,7 @@ export class MontanaBot {
     await this.bot.sendMessage(
       chatId,
       `Discord аккаунт успешно привязан\n\n` +
-        `Discord: ${member.user.username}\n` +
-        `Telegram ID: ${userId}\n\n` +
+        `Discord: ${member.user.username}\n\n` +
         `Роль с доступом автоматически назначена`
     );
 
