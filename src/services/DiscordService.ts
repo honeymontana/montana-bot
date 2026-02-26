@@ -501,17 +501,18 @@ export class DiscordService {
         return null;
       }
 
-      // Fetch all members (cache them)
-      await guild.members.fetch();
+      // Fetch members with query parameter to search by username
+      // This avoids rate limits from fetching all members
+      const fetchedMembers = await guild.members.fetch({ query: username, limit: 10 });
 
       log.info('🔍 DEBUG: Searching for Discord member', {
         searchUsername: username,
-        totalMembersInCache: guild.members.cache.size,
-        allUsernames: guild.members.cache.map((m) => m.user.username).slice(0, 20), // First 20 usernames
+        fetchedCount: fetchedMembers.size,
+        fetchedUsernames: fetchedMembers.map((m) => m.user.username),
       });
 
-      // Search by username (case-insensitive)
-      const member = guild.members.cache.find(
+      // Search by username (case-insensitive exact match)
+      const member = fetchedMembers.find(
         (m) => m.user.username.toLowerCase() === username.toLowerCase()
       );
 
@@ -524,7 +525,7 @@ export class DiscordService {
         return member;
       }
 
-      log.info('Discord member not found by username', { username });
+      log.info('Discord member not found by username', { username, fetchedCount: fetchedMembers.size });
       return null;
     } catch (error) {
       log.error('Error finding member by username', { username, error });
