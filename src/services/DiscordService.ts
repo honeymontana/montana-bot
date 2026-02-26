@@ -504,6 +504,12 @@ export class DiscordService {
       // Fetch all members (cache them)
       await guild.members.fetch();
 
+      log.info('🔍 DEBUG: Searching for Discord member', {
+        searchUsername: username,
+        totalMembersInCache: guild.members.cache.size,
+        allUsernames: guild.members.cache.map((m) => m.user.username).slice(0, 20), // First 20 usernames
+      });
+
       // Search by username (case-insensitive)
       const member = guild.members.cache.find(
         (m) => m.user.username.toLowerCase() === username.toLowerCase()
