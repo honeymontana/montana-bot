@@ -1264,274 +1264,190 @@ export class MontanaBot {
    * - "отвязать": отвязывает Discord
    * - username: привязывает/обновляет Discord username (с ограничением раз в месяц)
    */
-  private async handleDiscord(msg: TelegramBot.Message, param?: string): Promise<void> {
+  /**
+   * Handle /discord command
+   * New logic: link by username, permanent invite, role based on Montana subscription
+   */
+  private async handleDiscord(
+    msg: TelegramBot.Message,
+    param?: string,
+    overrideUserId?: number
+  ): Promise<void> {
     const chatId = msg.chat.id;
-    const userId = msg.from?.id;
+    const userId = overrideUserId || msg.from?.id;
 
     if (!userId) return;
+
+    log.info('🔍 Discord command', { userId, param, chatId });
 
     if (!config.discord.enabled) {
       await this.bot.sendMessage(chatId, '❌ Discord интеграция отключена.');
       return;
     }
 
-    // Check Discord service availability
     if (!this.discordService || !this.discordService.isReady()) {
       await this.bot.sendMessage(chatId, '❌ Discord бот не подключен. Попробуйте позже.');
       return;
     }
 
-    let existingLink = await this.discordRepo.findByTelegramId(userId);
+    const existingLink = await this.discordRepo.findByTelegramId(userId);
 
-    // Проактивная проверка: если нет линка, но есть pending invite - проверить не залинковались ли уже
-    if (!existingLink && !param) {
-      const activePendingInvite = await this.discordService.getActivePendingInvite(userId);
-
-      if (activePendingInvite) {
-        // Пробуем найти пользователя в Discord guild
-        const foundMember = await this.discordService.findMemberByPendingInvite(activePendingInvite);
-
-        if (foundMember) {
-          // Нашли! Линкуем автоматически
-          await this.discordService.linkAccountManually(
-            userId,
-            foundMember.id,
-            foundMember.user.username,
-            activePendingInvite.invite_code
-          );
-
-          // Обновляем existingLink для отображения
-          existingLink = await this.discordRepo.findByTelegramId(userId);
-        }
-      }
-    }
-
-    // Без параметров - показать статус
+    // Без параметров - показать инструкцию и invite ссылку
     if (!param) {
       if (!existingLink) {
+        const inviteUrl = config.discord.inviteUrl || 'https://discord.gg/YOUR_INVITE';
+
         await this.bot.sendMessage(
           chatId,
-          `🎮 Discord интеграция\n\n` +
-            `❌ Аккаунт не привязан\n\n` +
-            `💡 Вы получите одноразовую ссылку-приглашение на Discord сервер.\n` +
-            `После перехода по ссылке ваш аккаунт будет автоматически привязан.`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: '🔗 Привязать Discord',
-                    callback_data: 'discord_link',
-                  },
-                ],
-              ],
-            },
-          }
+          `🎮 Discord интеграция Montana\n\n` +
+            `1️⃣ Вступите на наш Discord сервер:\n${inviteUrl}\n\n` +
+            `2️⃣ Напишите команду с вашим Discord ником:\n` +
+            `/discord <ваш_ник>\n\n` +
+            `💡 Пример: /discord john_doe\n\n` +
+            `⚠️ Роль Montana участника выдаётся автоматически при наличии активной подписки в Telegram группе.`
         );
         return;
       }
 
+      // Показать статус привязки
       const { isInMainGroup } = await this.membershipService.checkMainGroupMembership(userId);
+      const hasRole = isInMainGroup;
 
-      let statusMessage = `🎮 Discord статус\n\n`;
-      statusMessage += `✅ Привязан: ${existingLink.discord_username || 'Не указано'}\n`;
-      statusMessage += `🆔 Discord ID: ${existingLink.discord_id}\n`;
-      statusMessage += `🏷️ Montana: ${isInMainGroup ? '✅ Активно' : '❌ Не активно'}\n\n`;
-
-      if (isInMainGroup) {
-        statusMessage += `✨ У вас есть доступ к Montana Discord серверу!`;
-      } else {
-        statusMessage += `⚠️ Для доступа вступите в Montana Telegram группу.`;
-      }
-
-      await this.bot.sendMessage(chatId, statusMessage, {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: '🔄 Привязать другой Discord',
-                callback_data: 'discord_link',
-              },
+      await this.bot.sendMessage(
+        chatId,
+        `🎮 Discord статус\n\n` +
+          `✅ Привязан: ${existingLink.discord_username}\n` +
+          `🆔 Discord ID: ${existingLink.discord_id}\n` +
+          `🏷️ Montana роль: ${hasRole ? '✅ Активна' : '❌ Не активна'}\n\n` +
+          `${
+            hasRole
+              ? '✨ У вас есть роль Montana на Discord!'
+              : '⚠️ Для получения роли вступите в Montana Telegram группу.'
+          }`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔄 Привязать другой Discord', callback_data: 'discord_relink' }],
+              [{ text: '❌ Отвязать Discord', callback_data: 'discord_unlink' }],
             ],
-            [
-              {
-                text: '❌ Отвязать Discord',
-                callback_data: 'discord_unlink',
-              },
-            ],
-          ],
-        },
-      });
+          },
+        }
+      );
       return;
     }
 
     // Отвязать аккаунт
-    if (param.toLowerCase() === 'отвязать' || param.toLowerCase() === 'unbind') {
+    if (param.toLowerCase() === 'отвязать' || param.toLowerCase() === 'unlink') {
       if (!existingLink) {
-        await this.bot.sendMessage(chatId, '❌ Ваш Telegram не привязан к Discord аккаунту.');
+        await this.bot.sendMessage(chatId, '❌ У вас нет привязанного Discord аккаунта');
         return;
       }
 
-      // Deactivate old link (remove role)
-      await this.discordService.deactivateOldLink(userId);
+      // Remove role from Discord
+      if (this.discordService) {
+        await this.discordService.deactivateOldLink(userId);
+      }
 
       // Delete link from database
       await this.discordRepo.deleteByTelegramId(userId);
 
       await this.bot.sendMessage(
         chatId,
-        `✅ Discord аккаунт успешно отвязан.\n\n` +
-          `Вы можете привязать другой аккаунт командой:\n` +
-          `/discord привязать`
+        `✅ Discord аккаунт отвязан\n\n` +
+          `Вы можете привязать другой аккаунт командой:\n/discord <ваш_discord_ник>`
       );
 
-      log.info('Discord account unlinked', {
-        telegramId: userId,
-        discordId: existingLink.discord_id,
-      });
+      log.info('Discord account unlinked', { telegramId: userId, discordId: existingLink.discord_id });
       return;
     }
 
-    // Привязать/перепривязать через invite ссылку
-    if (param.toLowerCase() === 'привязать' || param.toLowerCase() === 'link') {
-      // Если аккаунт уже привязан - показать статус с кнопками
-      if (existingLink) {
-        const { isInMainGroup } = await this.membershipService.checkMainGroupMembership(userId);
+    // Привязать по нику (param = Discord username)
+    const discordUsername = param.trim();
 
-        let statusMessage = `🎮 Discord статус\n\n`;
-        statusMessage += `✅ Привязан: ${existingLink.discord_username || 'Не указано'}\n`;
-        statusMessage += `🆔 Discord ID: ${existingLink.discord_id}\n`;
-        statusMessage += `🏷️ Montana: ${isInMainGroup ? '✅ Активно' : '❌ Не активно'}\n\n`;
-
-        if (isInMainGroup) {
-          statusMessage += `✨ У вас есть доступ к Montana Discord серверу!`;
-        } else {
-          statusMessage += `⚠️ Для доступа вступите в Montana Telegram группу.`;
-        }
-
-        await this.bot.sendMessage(chatId, statusMessage, {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: '🔄 Привязать другой Discord',
-                  callback_data: 'discord_relink',
-                },
-              ],
-              [
-                {
-                  text: '❌ Отвязать Discord',
-                  callback_data: 'discord_unlink',
-                },
-              ],
-            ],
-          },
-        });
-        return;
-      }
-
-      // Check if user is in main Montana group
-      const { isInMainGroup } = await this.membershipService.checkMainGroupMembership(userId);
-
-      if (!isInMainGroup) {
-        await this.bot.sendMessage(
-          chatId,
-          `❌ Доступ запрещён!\n\n` +
-            `Сначала вступите в основную Montana группу, чтобы получить доступ к Discord серверу.`
-        );
-        return;
-      }
-
-      // Check for active pending invite
-      const activePendingInvite = await this.discordService.getActivePendingInvite(userId);
-
-      if (activePendingInvite) {
-        // Verify invite still exists on Discord side
-        const inviteStillValid = await this.discordService.checkInviteExists(
-          activePendingInvite.invite_code
-        );
-
-        if (inviteStillValid) {
-          const expiresAt = new Date(activePendingInvite.expires_at);
-          const hoursLeft = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
-
-          await this.bot.sendMessage(
-            chatId,
-            `⚠️ У вас уже есть активная invite ссылка!\n\n` +
-              `🔗 ${activePendingInvite.invite_url}\n\n` +
-              `⏰ Истекает через: ${hoursLeft} ч.\n` +
-              `🎯 Максимум использований: 1\n\n` +
-              `После присоединения ваш аккаунт будет автоматически привязан.`
-          );
-          return;
-        } else {
-          // Invite was deleted on Discord side (likely used) - clean up database
-          log.info('Cleaning up deleted Discord invite from database', {
-            telegramId: userId,
-            inviteCode: activePendingInvite.invite_code,
-          });
-          await this.discordService.cleanupInvalidInvite(activePendingInvite.invite_code);
-          // Continue to create new invite
-        }
-      }
-
-      // Deactivate old link if re-linking
-      if (existingLink) {
-        await this.discordService.deactivateOldLink(userId);
-      }
-
-      // Ensure user exists in database (required for foreign key constraint)
-      await this.userRepo.create({
-        id: userId,
-        username: msg.from?.username,
-        first_name: msg.from?.first_name,
-        last_name: msg.from?.last_name,
-        language_code: msg.from?.language_code,
-      });
-
-      // Create one-time invite link
-      const inviteUrl = await this.discordService.createOneTimeInvite(userId);
-
-      if (!inviteUrl) {
-        await this.bot.sendMessage(
-          chatId,
-          `❌ Ошибка создания invite ссылки.\n\n` +
-            `Discord бот сейчас недоступен или не подключен.\n` +
-            `Попробуйте через 1-2 минуты или обратитесь к администратору.`
-        );
-        return;
-      }
-
-      const relinkMessage = existingLink ? `🔄 Старая привязка деактивирована.\n\n` : '';
-
+    if (discordUsername.length < 2 || discordUsername.length > 32) {
       await this.bot.sendMessage(
         chatId,
-        relinkMessage +
-          `✅ Одноразовая invite ссылка создана!\n\n` +
-          `🔗 ${inviteUrl}\n\n` +
-          `⚠️ ВАЖНО:\n` +
-          `• Ссылка действительна 24 часа\n` +
-          `• Можно использовать только 1 раз\n` +
-          `• После присоединения аккаунт будет автоматически привязан\n\n` +
-          `💡 Проверить статус: /discord`
+        `❌ Некорректный Discord ник\n\n` +
+          `Ник должен быть от 2 до 32 символов.\n` +
+          `Пример: /discord john_doe`
       );
-
-      log.info('Discord one-time invite created', {
-        telegramId: userId,
-        inviteUrl,
-      });
       return;
     }
 
-    // Неизвестная команда
+    // Проверка: этот Discord уже привязан к другому Telegram?
+    const existingDiscordLink = await this.discordRepo.findByDiscordUsername(discordUsername);
+    if (existingDiscordLink && existingDiscordLink.telegram_id !== userId) {
+      await this.bot.sendMessage(
+        chatId,
+        `❌ Этот Discord аккаунт уже привязан к другому Telegram\n\n` +
+          `Discord ник: ${discordUsername}\n` +
+          `Один Discord = один Telegram`
+      );
+      return;
+    }
+
+    // Поиск пользователя на Discord сервере
+    const member = await this.discordService.findMemberByUsername(discordUsername);
+
+    if (!member) {
+      await this.bot.sendMessage(
+        chatId,
+        `❌ Пользователь не найден на Discord сервере\n\n` +
+          `Discord ник: ${discordUsername}\n\n` +
+          `Убедитесь что:\n` +
+          `1️⃣ Вы вступили на наш сервер\n` +
+          `2️⃣ Ник написан правильно (без @, без #)\n` +
+          `3️⃣ Используете ваш Discord username, а не отображаемое имя`
+      );
+      return;
+    }
+
+    // Если у пользователя уже есть привязка - деактивировать старую
+    if (existingLink) {
+      await this.discordService.deactivateOldLink(userId);
+      log.info('Replacing old Discord link', {
+        telegramId: userId,
+        oldDiscordId: existingLink.discord_id,
+        newDiscordId: member.id,
+      });
+    }
+
+    // Сохранить привязку в базу
+    await this.discordRepo.upsert({
+      telegram_id: userId,
+      discord_id: member.id,
+      discord_username: member.user.username,
+      discord_discriminator: member.user.discriminator || '0',
+      discord_avatar: member.user.avatar || undefined,
+      guild_id: config.discord.guildId,
+      last_discord_change: new Date(),
+    });
+
+    // Проверить подписку Montana и выдать роль если активна
+    const { isInMainGroup } = await this.membershipService.checkMainGroupMembership(userId);
+
+    if (isInMainGroup) {
+      await this.discordService.addRole(member.id, config.discord.memberRoleId);
+    }
+
     await this.bot.sendMessage(
       chatId,
-      `❌ Неизвестная команда.\n\n` +
-        `Доступные команды:\n` +
-        `/discord - показать статус\n` +
-        `/discord привязать - получить invite ссылку\n` +
-        `/discord отвязать - отвязать аккаунт`
+      `✅ Discord аккаунт успешно привязан!\n\n` +
+        `Discord: ${member.user.username}\n` +
+        `Telegram ID: ${userId}\n\n` +
+        `${
+          isInMainGroup
+            ? '🎉 Роль Montana автоматически назначена!'
+            : '⚠️ Для получения роли Montana вступите в Telegram группу.'
+        }`
     );
+
+    log.info('Discord account linked by username', {
+      telegramId: userId,
+      discordId: member.id,
+      discordUsername: member.user.username,
+      roleAdded: isInMainGroup,
+    });
   }
 
   private startDiscordRoleSync(): void {
@@ -1607,7 +1523,7 @@ export class MontanaBot {
 
       if (data === 'discord_link') {
         // Привязать Discord
-        await this.handleDiscord(query.message as TelegramBot.Message, 'привязать');
+        await this.handleDiscord(query.message as TelegramBot.Message, 'привязать', userId);
       } else if (data === 'discord_relink') {
         // Перепривязать Discord (сначала отвязать старый)
         const existingLink = await this.discordRepo.findByTelegramId(userId);
@@ -1615,10 +1531,10 @@ export class MontanaBot {
           await this.discordService.deactivateOldLink(userId);
           await this.discordRepo.deleteByTelegramId(userId);
         }
-        await this.handleDiscord(query.message as TelegramBot.Message, 'привязать');
+        await this.handleDiscord(query.message as TelegramBot.Message, 'привязать', userId);
       } else if (data === 'discord_unlink') {
         // Отвязать Discord
-        await this.handleDiscord(query.message as TelegramBot.Message, 'отвязать');
+        await this.handleDiscord(query.message as TelegramBot.Message, 'отвязать', userId);
       }
     } catch (error) {
       log.error('Error handling callback query', { error, userId, data });

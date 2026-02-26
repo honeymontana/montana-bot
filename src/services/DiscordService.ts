@@ -3,13 +3,10 @@ import {
   GatewayIntentBits,
   Guild,
   GuildMember,
-  Invite,
   VoiceState,
-  Collection,
 } from 'discord.js';
 import TelegramBot from 'node-telegram-bot-api';
 import { DiscordRepository } from '../repositories/DiscordRepository';
-import { DiscordPendingInviteRepository } from '../repositories/DiscordPendingInviteRepository';
 import { UserRepository } from '../repositories/UserRepository';
 import { DiscordRoleSyncResult } from '../types';
 import { log } from '../utils/logger';
@@ -18,27 +15,23 @@ import { config } from '../config';
 export class DiscordService {
   private client: Client;
   private discordRepo: DiscordRepository;
-  private pendingInviteRepo: DiscordPendingInviteRepository;
   private userRepo: UserRepository;
   private isConnected: boolean = false;
   private bot: TelegramBot | null = null;
   private lastVoiceNotification: number = 0;
   private lastMontanaNotification: number = 0;
   private voiceChannelCache: Map<string, number> = new Map();
-  private inviteCache: Map<string, Collection<string, Invite>> = new Map();
 
   constructor(bot?: TelegramBot) {
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildInvites,
-        GatewayIntentBits.GuildVoiceStates, // Добавлен для отслеживания voice
+        GatewayIntentBits.GuildVoiceStates, // Для отслеживания voice
       ],
     });
 
     this.discordRepo = new DiscordRepository();
-    this.pendingInviteRepo = new DiscordPendingInviteRepository();
     this.userRepo = new UserRepository();
     this.bot = bot || null;
 
@@ -59,9 +52,6 @@ export class DiscordService {
     this.client.on('clientReady', async () => {
       log.info('Discord bot connected', { tag: this.client.user?.tag });
       this.isConnected = true;
-
-      // Initialize invite cache for tracking
-      await this.cacheGuildInvites();
     });
 
     this.client.on('error', (error) => {
@@ -73,22 +63,6 @@ export class DiscordService {
       this.isConnected = false;
     });
 
-    // Handle new member joins - auto-link account if they used pending invite
-    this.client.on('guildMemberAdd', async (member) => {
-      await this.handleMemberJoin(member);
-    });
-
-    // Track invite creation and update cache
-    this.client.on('inviteCreate', async (invite) => {
-      log.info('Discord invite created', { code: invite.code });
-      await this.cacheGuildInvites(invite.guild?.id);
-    });
-
-    // Track invite deletion and update cache
-    this.client.on('inviteDelete', async (invite) => {
-      log.info('Discord invite deleted', { code: invite.code });
-      await this.cacheGuildInvites(invite.guild?.id);
-    });
 
     // Track voice state changes
     this.client.on('voiceStateUpdate', async (oldState, newState) => {
@@ -447,66 +421,6 @@ export class DiscordService {
   }
 
   /**
-   * Create one-time invite link for user
-   */
-  async createOneTimeInvite(telegramId: number): Promise<string | null> {
-    try {
-      // Check if Discord bot is connected
-      if (!this.isConnected) {
-        log.error('Discord bot not connected, cannot create invite', { telegramId });
-        return null;
-      }
-
-      const guildId = config.discord.guildId;
-      const guild = await this.getGuild(guildId);
-
-      if (!guild) {
-        log.error('Discord guild not found', { guildId });
-        return null;
-      }
-
-      // Get first available text channel for invite creation
-      const channels = await guild.channels.fetch();
-      const textChannel = channels.find((channel) => channel?.isTextBased() && channel.type === 0);
-
-      if (!textChannel) {
-        log.error('No text channel found for invite creation');
-        return null;
-      }
-
-      // Delete any old unused invites for this user
-      await this.pendingInviteRepo.deleteOldInvites(telegramId);
-
-      // Create new invite with max 1 use, expires in 24 hours
-      const invite = await (textChannel as any).createInvite({
-        maxUses: 1,
-        maxAge: 86400, // 24 hours in seconds
-        unique: true,
-        reason: `One-time invite for Telegram user ${telegramId}`,
-      });
-
-      // Store invite in database
-      const expiresAt = new Date(Date.now() + 86400 * 1000); // 24 hours
-      await this.pendingInviteRepo.create({
-        telegram_id: telegramId,
-        invite_code: invite.code,
-        invite_url: invite.url,
-        expires_at: expiresAt,
-      });
-
-      log.info('Created one-time Discord invite', {
-        telegramId,
-        inviteCode: invite.code,
-      });
-
-      return invite.url;
-    } catch (error) {
-      log.error('Failed to create Discord invite', { telegramId, error });
-      return null;
-    }
-  }
-
-  /**
    * Create public invite link for announcements (valid for 24h, unlimited uses)
    */
   async createPublicInvite(): Promise<string | null> {
@@ -549,152 +463,6 @@ export class DiscordService {
   }
 
   /**
-   * Cache guild invites for tracking
-   */
-  private async cacheGuildInvites(guildId?: string): Promise<void> {
-    try {
-      const targetGuildId = guildId || config.discord.guildId;
-      if (!targetGuildId) return;
-
-      const guild = await this.getGuild(targetGuildId);
-      if (!guild) return;
-
-      const invites = await guild.invites.fetch();
-      this.inviteCache.set(targetGuildId, invites);
-
-      log.debug('Cached Discord invites', {
-        guildId: targetGuildId,
-        count: invites.size,
-      });
-    } catch (error) {
-      log.error('Failed to cache guild invites', { guildId, error });
-    }
-  }
-
-  /**
-   * Handle member join event - auto-link if they used pending invite
-   */
-  private async handleMemberJoin(member: GuildMember): Promise<void> {
-    try {
-      log.info('Member joined Discord', {
-        discordId: member.id,
-        username: member.user.username,
-        guildId: member.guild.id,
-      });
-
-      // Fetch current invites
-      const currentInvites = await member.guild.invites.fetch();
-
-      // Get cached invites
-      const cachedInvites = this.inviteCache.get(member.guild.id);
-
-      let usedInviteCode: string | null = null;
-
-      // Method 1: Compare with cached invites to find which one was used
-      if (cachedInvites) {
-        for (const [code, currentInvite] of currentInvites) {
-          const cachedInvite = cachedInvites.get(code);
-
-          // Check if uses increased
-          const currentUses = currentInvite.uses || 0;
-          const cachedUses = cachedInvite?.uses || 0;
-
-          if (currentUses > cachedUses) {
-            usedInviteCode = code;
-            log.info('Found used invite by comparing cache', {
-              code,
-              cachedUses,
-              currentUses,
-            });
-            break;
-          }
-        }
-      }
-
-      // Method 2: Fallback for one-time invites (maxUses: 1)
-      // These get deleted immediately after use, so they won't be in currentInvites
-      if (!usedInviteCode) {
-        log.info('Invite not found in current list (likely one-time invite), using fallback');
-
-        // Get all unused pending invites from last 24 hours (same as invite expiration)
-        const recentPendingInvites = await this.pendingInviteRepo.getRecentUnused(
-          member.guild.id,
-          1440 // 24 hours in minutes
-        );
-
-        log.info('Recent unused pending invites found', {
-          count: recentPendingInvites.length,
-        });
-
-        if (recentPendingInvites.length === 1) {
-          // Only one pending invite - high confidence this is the one
-          usedInviteCode = recentPendingInvites[0].invite_code;
-          log.info('Using single recent pending invite as fallback', {
-            code: usedInviteCode,
-          });
-        } else if (recentPendingInvites.length > 1) {
-          log.warn('Multiple recent pending invites found, cannot determine which was used', {
-            count: recentPendingInvites.length,
-            discordId: member.id,
-          });
-        } else {
-          log.warn('No pending invites found for this member join', {
-            discordId: member.id,
-          });
-        }
-      }
-
-      // If we found the used invite, link the account
-      if (usedInviteCode) {
-        const pendingInvite = await this.pendingInviteRepo.findByCode(usedInviteCode);
-
-        if (pendingInvite && !pendingInvite.used) {
-          // Mark invite as used
-          await this.pendingInviteRepo.markAsUsed(usedInviteCode);
-
-          // Check if user already has a link
-          const existingLink = await this.discordRepo.findByTelegramId(pendingInvite.telegram_id);
-
-          if (existingLink) {
-            // Deactivate old Discord account (remove role)
-            await this.removeRole(existingLink.discord_id, config.discord.memberRoleId);
-            log.info('Deactivated old Discord link', {
-              telegramId: pendingInvite.telegram_id,
-              oldDiscordId: existingLink.discord_id,
-            });
-          }
-
-          // Create new link
-          await this.discordRepo.upsert({
-            telegram_id: pendingInvite.telegram_id,
-            discord_id: member.id,
-            discord_username: member.user.username,
-            discord_discriminator: member.user.discriminator,
-            discord_avatar: member.user.avatar || undefined,
-            guild_id: member.guild.id,
-            last_discord_change: new Date(),
-          });
-
-          // Add member role
-          await this.addRole(member.id, config.discord.memberRoleId);
-
-          log.info('Auto-linked Discord account', {
-            telegramId: pendingInvite.telegram_id,
-            discordId: member.id,
-            username: member.user.username,
-            inviteCode: usedInviteCode,
-          });
-        }
-      }
-
-      // Update invite cache
-      await this.cacheGuildInvites(member.guild.id);
-    } catch (error) {
-      log.error('Failed to handle member join', { error });
-    }
-  }
-
-  /**
    * Deactivate old Discord link (for re-linking)
    */
   async deactivateOldLink(telegramId: number): Promise<boolean> {
@@ -723,133 +491,38 @@ export class DiscordService {
   }
 
   /**
-   * Get active pending invite for user
+   * Find guild member by Discord username
    */
-  async getActivePendingInvite(telegramId: number) {
-    return await this.pendingInviteRepo.findActiveByTelegramId(telegramId);
-  }
-
-  /**
-   * Check if invite still exists on Discord side
-   */
-  async checkInviteExists(inviteCode: string): Promise<boolean> {
-    try {
-      const guildId = config.discord.guildId;
-      const guild = await this.getGuild(guildId);
-
-      if (!guild) {
-        return false;
-      }
-
-      const invites = await guild.invites.fetch();
-      const invite = invites.get(inviteCode);
-
-      return !!invite;
-    } catch (error) {
-      log.error('Failed to check invite existence', { inviteCode, error });
-      return false;
-    }
-  }
-
-  /**
-   * Cleanup invalid invite from database
-   */
-  async cleanupInvalidInvite(inviteCode: string): Promise<void> {
-    try {
-      await this.pendingInviteRepo.markAsUsed(inviteCode);
-      log.info('Marked invalid invite as used', { inviteCode });
-    } catch (error) {
-      log.error('Failed to cleanup invalid invite', { inviteCode, error });
-    }
-  }
-
-  /**
-   * Find guild member by pending invite (проактивная проверка)
-   */
-  async findMemberByPendingInvite(
-    pendingInvite: any
-  ): Promise<GuildMember | null> {
+  async findMemberByUsername(username: string): Promise<GuildMember | null> {
     try {
       const guild = await this.getGuild(config.discord.guildId);
       if (!guild) {
-        log.error('Guild not found for proactive check');
+        log.error('Guild not found', { guildId: config.discord.guildId });
         return null;
       }
-      const members = await guild.members.fetch();
 
-      // Ищем members которые присоединились после создания invite
-      const inviteCreatedAt = new Date(pendingInvite.created_at).getTime();
+      // Fetch all members (cache them)
+      await guild.members.fetch();
 
-      for (const [_, member] of members) {
-        const joinedAt = member.joinedAt?.getTime();
-        if (joinedAt && joinedAt >= inviteCreatedAt) {
-          // Нашли кандидата! Проверим что это не бот
-          if (!member.user.bot) {
-            log.info('Found potential member for pending invite', {
-              discordId: member.id,
-              username: member.user.username,
-              joinedAt: member.joinedAt,
-              inviteCreated: pendingInvite.created_at,
-            });
-            return member;
-          }
-        }
-      }
+      // Search by username (case-insensitive)
+      const member = guild.members.cache.find(
+        (m) => m.user.username.toLowerCase() === username.toLowerCase()
+      );
 
-      return null;
-    } catch (error) {
-      log.error('Failed to find member by pending invite', { error });
-      return null;
-    }
-  }
-
-  /**
-   * Link account manually (из проактивной проверки)
-   */
-  async linkAccountManually(
-    telegramId: number,
-    discordId: string,
-    discordUsername: string,
-    inviteCode: string
-  ): Promise<void> {
-    try {
-      // Mark invite as used
-      await this.pendingInviteRepo.markAsUsed(inviteCode);
-
-      // Check if user already has a link
-      const existingLink = await this.discordRepo.findByTelegramId(telegramId);
-
-      if (existingLink) {
-        // Deactivate old Discord account (remove role)
-        await this.removeRole(existingLink.discord_id, config.discord.memberRoleId);
-        log.info('Deactivated old Discord link', {
-          telegramId,
-          oldDiscordId: existingLink.discord_id,
+      if (member) {
+        log.info('Found Discord member by username', {
+          username,
+          discordId: member.id,
+          foundUsername: member.user.username,
         });
+        return member;
       }
 
-      // Create new link
-      await this.discordRepo.upsert({
-        telegram_id: telegramId,
-        discord_id: discordId,
-        discord_username: discordUsername,
-        discord_discriminator: '0',
-        guild_id: config.discord.guildId,
-        last_discord_change: new Date(),
-      });
-
-      // Add member role
-      await this.addRole(discordId, config.discord.memberRoleId);
-
-      log.info('Manually linked Discord account (proactive check)', {
-        telegramId,
-        discordId,
-        username: discordUsername,
-        inviteCode,
-      });
+      log.info('Discord member not found by username', { username });
+      return null;
     } catch (error) {
-      log.error('Failed to manually link account', { error });
-      throw error;
+      log.error('Error finding member by username', { username, error });
+      return null;
     }
   }
 

@@ -7,7 +7,20 @@ export class DiscordRepository {
    * Find Discord link by Telegram ID
    */
   async findByTelegramId(telegramId: number): Promise<DiscordLink | null> {
+    log.info('🔍 DEBUG: Searching discord_links', {
+      telegramId,
+      telegramIdType: typeof telegramId,
+    });
+
     const result = await query('SELECT * FROM discord_links WHERE telegram_id = $1', [telegramId]);
+
+    log.info('🔍 DEBUG: discord_links query result', {
+      telegramId,
+      rowCount: result.rowCount,
+      hasRows: result.rows.length > 0,
+      firstRow: result.rows[0] || null,
+    });
+
     return result.rows[0] || null;
   }
 
@@ -16,6 +29,17 @@ export class DiscordRepository {
    */
   async findByDiscordId(discordId: string): Promise<DiscordLink | null> {
     const result = await query('SELECT * FROM discord_links WHERE discord_id = $1', [discordId]);
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Find Discord link by Discord username
+   */
+  async findByDiscordUsername(username: string): Promise<DiscordLink | null> {
+    const result = await query(
+      'SELECT * FROM discord_links WHERE LOWER(discord_username) = LOWER($1)',
+      [username]
+    );
     return result.rows[0] || null;
   }
 

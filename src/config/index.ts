@@ -24,14 +24,9 @@ const configSchema = Joi.object({
   TELEGRAM_SESSION_STRING: Joi.string().optional().allow('').default(''),
   DISCORD_ENABLED: Joi.boolean().default(false),
   DISCORD_BOT_TOKEN: Joi.string().optional().default(''),
-  DISCORD_CLIENT_ID: Joi.string().optional().default(''),
-  DISCORD_CLIENT_SECRET: Joi.string().optional().default(''),
   DISCORD_GUILD_ID: Joi.string().optional().default(''),
   DISCORD_MEMBER_ROLE_ID: Joi.string().optional().default(''),
-  DISCORD_REDIRECT_URI: Joi.string()
-    .optional()
-    .default('http://localhost:3000/auth/discord/callback'),
-  OAUTH_PORT: Joi.number().default(3000),
+  DISCORD_INVITE_URL: Joi.string().optional().default(''),
 });
 
 // Validate environment variables
@@ -88,14 +83,9 @@ export const config = {
   discord: {
     enabled: envVars.DISCORD_ENABLED as boolean,
     botToken: envVars.DISCORD_BOT_TOKEN as string,
-    clientId: envVars.DISCORD_CLIENT_ID as string,
-    clientSecret: envVars.DISCORD_CLIENT_SECRET as string,
     guildId: envVars.DISCORD_GUILD_ID as string,
     memberRoleId: envVars.DISCORD_MEMBER_ROLE_ID as string,
-    redirectUri: envVars.DISCORD_REDIRECT_URI as string,
-  },
-  oauth: {
-    port: envVars.OAUTH_PORT as number,
+    inviteUrl: envVars.DISCORD_INVITE_URL as string,
   },
 };
 
