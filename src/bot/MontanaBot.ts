@@ -30,6 +30,13 @@ export class MontanaBot {
     this.discordRepo = new DiscordRepository();
   }
 
+  /**
+   * Escape Markdown special characters to prevent parsing errors
+   */
+  private escapeMarkdown(text: string): string {
+    return text.replace(/([_*[\]`])/g, '\\$1');
+  }
+
   async start(): Promise<void> {
     // Test database connection
     const dbConnected = await testConnection();
@@ -798,10 +805,9 @@ export class MontanaBot {
       helpMessage += `
 
 *Discord интеграция:*
-🔗 /linkdiscord - Привязать Discord через OAuth
-🔗 /setdiscord - Привязать Discord ID вручную
-❌ /unlinkdiscord - Отвязать Discord аккаунт
-📊 /discordstatus - Статус Discord привязки`;
+🔗 \`/discord\` - Показать инструкцию по привязке
+🔗 \`/discord ваш_ник\` - Привязать Discord аккаунт
+❌ \`/discord отвязать\` - Отвязать Discord аккаунт`;
     }
 
     if (isAdmin) {
@@ -852,7 +858,8 @@ export class MontanaBot {
       statsMessage += `👤 *Профиль:*\n`;
       statsMessage += `• User ID: \`${userId}\`\n`;
       if (user?.username) {
-        statsMessage += `• Username: @${user.username}\n`;
+        const escapedUsername = this.escapeMarkdown(user.username);
+        statsMessage += `• Username: @${escapedUsername}\n`;
       }
       statsMessage += `• Основная группа: ${isInMainGroup ? '✅ Участник' : '❌ Не участник'}\n`;
 
@@ -868,14 +875,16 @@ export class MontanaBot {
         if (permanentGroups.length > 0) {
           statsMessage += `\n⭐ *Постоянные группы:*\n`;
           permanentGroups.forEach((group) => {
-            statsMessage += `• ${group.title}${group.status === 'administrator' || group.status === 'creator' ? ' 👑' : ''}\n`;
+            const escapedTitle = this.escapeMarkdown(group.title || 'Без названия');
+            statsMessage += `• ${escapedTitle}${group.status === 'administrator' || group.status === 'creator' ? ' 👑' : ''}\n`;
           });
         }
 
         if (regularGroups.length > 0) {
           statsMessage += `\n📺 *Обычные группы:*\n`;
           regularGroups.forEach((group) => {
-            statsMessage += `• ${group.title}${group.status === 'administrator' || group.status === 'creator' ? ' 👑' : ''}\n`;
+            const escapedTitle = this.escapeMarkdown(group.title || 'Без названия');
+            statsMessage += `• ${escapedTitle}${group.status === 'administrator' || group.status === 'creator' ? ' 👑' : ''}\n`;
           });
         }
       } else {
@@ -924,14 +933,16 @@ export class MontanaBot {
 
       if (mainGroup) {
         message += `🏠 *Основная группа:*\n`;
-        message += `• ${mainGroup.title}\n`;
+        const escapedMainTitle = this.escapeMarkdown(mainGroup.title || 'Без названия');
+        message += `• ${escapedMainTitle}\n`;
         message += `  ID: \`${mainGroup.chat_id}\`\n\n`;
       }
 
       if (permanentGroups.length > 0) {
         message += `⭐ *Постоянные группы (${permanentGroups.length}):*\n`;
         permanentGroups.forEach((group) => {
-          message += `• ${group.title}\n`;
+          const escapedTitle = this.escapeMarkdown(group.title || 'Без названия');
+          message += `• ${escapedTitle}\n`;
           message += `  ID: \`${group.chat_id}\`\n`;
           if (group.access_duration_hours) {
             message += `  ⏰ Окно вступления: ${group.access_duration_hours}ч\n`;
@@ -943,7 +954,8 @@ export class MontanaBot {
       if (regularGroups.length > 0) {
         message += `📺 *Обычные группы (${regularGroups.length}):*\n`;
         regularGroups.forEach((group) => {
-          message += `• ${group.title}\n`;
+          const escapedTitle = this.escapeMarkdown(group.title || 'Без названия');
+          message += `• ${escapedTitle}\n`;
           message += `  ID: \`${group.chat_id}\`\n`;
           if (group.access_duration_hours) {
             message += `  ⏰ Доступ: ${group.access_duration_hours}ч\n`;
@@ -955,7 +967,8 @@ export class MontanaBot {
       if (inactiveGroups.length > 0) {
         message += `❌ *Неактивные группы (${inactiveGroups.length}):*\n`;
         inactiveGroups.forEach((group) => {
-          message += `• ${group.title} (ID: \`${group.chat_id}\`)\n`;
+          const escapedTitle = this.escapeMarkdown(group.title || 'Без названия');
+          message += `• ${escapedTitle} (ID: \`${group.chat_id}\`)\n`;
         });
       }
 
