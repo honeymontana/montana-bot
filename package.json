@@ -55,7 +55,7 @@
     "helmet": "^8.1.0",
     "input": "^1.0.1",
     "joi": "^17.11.0",
-    "node-telegram-bot-api": "0.63.0",
+    "node-telegram-bot-api": "0.67.0",
     "pg": "^8.11.3",
     "telegram": "^2.26.22",
     "winston": "^3.11.0"
